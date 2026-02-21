@@ -21,7 +21,7 @@ import urllib.request, re, sys
 from pathlib import Path
 
 CACHE = Path("/fonts-cache")
-UA = "Mozilla/4.0 (compatible; MSIE 6.0; Windows NT 5.1)"
+UA = "Mozilla/5.0 (compatible; title-image-service/1.0)"
 
 FONTS = {
     "rubik_glitch":     "Rubik+Glitch",

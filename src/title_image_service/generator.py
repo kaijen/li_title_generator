@@ -115,7 +115,7 @@ def try_google_fonts(font_name: str) -> str | None:
         logger.info("Google Fonts: %s", css_url)
         req = urllib.request.Request(
             css_url,
-            headers={"User-Agent": "Mozilla/4.0 (compatible; MSIE 6.0; Windows NT 5.1)"}
+            headers={"User-Agent": "Mozilla/5.0 (compatible; title-image-service/1.0)"}
         )
         css = urllib.request.urlopen(req, timeout=10).read().decode("utf-8")
 
