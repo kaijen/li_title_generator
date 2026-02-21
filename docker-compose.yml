@@ -1,0 +1,15 @@
+services:
+  title-image:
+    build: .
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./api_keys.json:/config/api_keys.json:ro
+      - font-cache:/fonts-cache
+    environment:
+      - API_KEYS_FILE=/config/api_keys.json
+      - FONT_CACHE_DIR=/fonts-cache
+    restart: unless-stopped
+
+volumes:
+  font-cache:

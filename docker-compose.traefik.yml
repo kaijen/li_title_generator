@@ -1,0 +1,34 @@
+# Overlay für den Betrieb hinter einem bestehenden Traefik-Container.
+#
+# Verwendung:
+#   cp .env.sample .env   # Werte anpassen!
+#   docker compose -f docker-compose.yml -f docker-compose.traefik.yml up -d
+#
+# Voraussetzung: Ein laufender Traefik-Container im Netzwerk ${TRAEFIK_NETWORK},
+# der HTTPS über ${TRAEFIK_CERTRESOLVER} auflöst.
+#
+# Benötigt Docker Compose >= 2.x (für "!reset").
+
+services:
+  title-image:
+    ports: !reset []        # Deaktiviert die ports-Angabe aus docker-compose.yml;
+                            # Traefik übernimmt das Routing.
+    networks:
+      - traefik
+    labels:
+      - "traefik.enable=true"
+      # Routing-Regel: Hostname aus .env
+      - "traefik.http.routers.title-image.rule=Host(`${TRAEFIK_HOST}`)"
+      - "traefik.http.routers.title-image.entrypoints=${TRAEFIK_ENTRYPOINT:-websecure}"
+      # TLS
+      - "traefik.http.routers.title-image.tls=true"
+      - "traefik.http.routers.title-image.tls.certresolver=${TRAEFIK_CERTRESOLVER:-letsencrypt}"
+      # Interner Port des Containers
+      - "traefik.http.services.title-image.loadbalancer.server.port=8000"
+      # Netzwerk, über das Traefik den Container erreicht
+      - "traefik.docker.network=${TRAEFIK_NETWORK:-traefik}"
+
+networks:
+  traefik:
+    external: true
+    name: ${TRAEFIK_NETWORK:-traefik}

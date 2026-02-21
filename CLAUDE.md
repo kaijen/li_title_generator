@@ -96,9 +96,14 @@ class ImageRequest(BaseModel):
     breite:      int  = 1024
     font:        str  = "Rubik Glitch"
     titelzeilen: int  = 1
+    dateiname:   str  = ""  # Leer → linkedin_title_<YYYY-MM-DD-HH-mm>.png
 ```
 
 Alle Felder optional mit denselben Defaults wie im CLI-Script.
+
+`dateiname` steuert den `Content-Disposition`-Header der HTTP-Antwort:
+- Angegeben: der übergebene Name wird verwendet (z. B. `"nis2-slide.png"`)
+- Leer oder weggelassen: automatisch `linkedin_title_<YYYY-MM-DD-HH-mm>.png`
 
 ---
 
@@ -123,6 +128,8 @@ Alle Felder optional mit denselben Defaults wie im CLI-Script.
 - **Auth**: `X-API-Key` required
 - **Body**: `ImageRequest` als JSON
 - **Response**: PNG-Bilddaten (`Content-Type: image/png`)
+- **Header**: `Content-Disposition: attachment; filename="<dateiname>"`
+  – Dateiname aus `dateiname`-Feld oder automatisch `linkedin_title_<YYYY-MM-DD-HH-mm>.png`
 - Fehler bei ungültigen Farben oder Parametern → HTTP 422
 
 ### `GET /health`
@@ -266,6 +273,7 @@ def run():
 ## Beispiel-Request
 
 ```bash
+# Mit explizitem Dateinamen
 curl -X POST http://localhost:8000/generate \
   -H "X-API-Key: sk-abc123" \
   -H "Content-Type: application/json" \
@@ -275,9 +283,17 @@ curl -X POST http://localhost:8000/generate \
     "hintergrund": "#1a1a2e",
     "vordergrund": "white",
     "breite": 1920,
-    "titelzeilen": 2
+    "titelzeilen": 2,
+    "dateiname": "nis2-slide.png"
   }' \
-  --output slide.png
+  --output nis2-slide.png
+
+# Ohne Dateinamen → linkedin_title_<YYYY-MM-DD-HH-mm>.png im Content-Disposition-Header
+curl -X POST http://localhost:8000/generate \
+  -H "X-API-Key: sk-abc123" \
+  -H "Content-Type: application/json" \
+  -d '{"titel": "NIS2 Compliance", "breite": 1920}' \
+  -OJ
 ```
 
 ---

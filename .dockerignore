@@ -1,0 +1,14 @@
+.git
+.gitignore
+__pycache__
+*.pyc
+*.pyo
+*.egg-info
+.venv
+venv
+dist
+build
+tests/
+tmp/
+*.md
+api_keys.json
