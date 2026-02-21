@@ -50,6 +50,12 @@ ENV FONT_CACHE_DIR=/fonts-cache
 # api_keys.json wird zur Laufzeit gemountet, nicht ins Image gebacken
 ENV API_KEYS_FILE=/config/api_keys.json
 
+# ── Unprivilegierter Benutzer ────────────────────────────────────────────────
+RUN useradd --no-create-home --shell /bin/false appuser \
+    && chown -R appuser:appuser /app /fonts-cache
+
+USER appuser
+
 EXPOSE 8000
 
 HEALTHCHECK --interval=30s --timeout=5s \
