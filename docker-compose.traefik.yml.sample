@@ -1,8 +1,9 @@
 # Overlay für den Betrieb hinter einem bestehenden Traefik-Container.
 #
 # Verwendung:
-#   cp .env.sample .env   # Werte anpassen!
-#   docker compose -f docker-compose.yml -f docker-compose.traefik.yml up -d
+#   cp docker-compose.traefik.yml.sample docker-compose.traefik.yml
+#   # In .env: COMPOSE_FILE=docker-compose.yml:docker-compose.traefik.yml setzen
+#   docker compose up -d
 #
 # Voraussetzung: Ein laufender Traefik-Container im Netzwerk ${TRAEFIK_NETWORK},
 # der HTTPS über ${TRAEFIK_CERTRESOLVER} auflöst.
