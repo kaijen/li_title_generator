@@ -14,10 +14,9 @@ def test_health_no_auth(client):
 
 
 def test_generate_missing_key(client):
-    # X-API-Key ist mit Header(...) deklariert – FastAPI gibt 422 für
-    # fehlende Required-Header zurück, bevor die Dependency läuft.
+    # Keys sind konfiguriert → fehlender Header → 401
     resp = client.post("/generate", json={"titel": "Test"})
-    assert resp.status_code == 422
+    assert resp.status_code == 401
 
 
 def test_generate_invalid_key(client):
@@ -85,9 +84,9 @@ def test_generate_invalid_color_returns_422(client):
     assert resp.status_code == 422
 
 
-# ── api_keys.json fehlt → 401 (kein Crash) ───────────────────────────────────
+# ── api_keys.json fehlt → offener Zugriff (kein Crash) ───────────────────────
 
-def test_missing_keys_file_returns_401(tmp_path, monkeypatch):
+def test_missing_keys_file_allows_access(tmp_path, monkeypatch):
     absent = tmp_path / "nonexistent.json"
     monkeypatch.setenv("API_KEYS_FILE", str(absent))
     import title_image_service.auth as auth_mod
@@ -98,14 +97,13 @@ def test_missing_keys_file_returns_401(tmp_path, monkeypatch):
     resp = test_client.post(
         "/generate",
         json={"titel": "Test", "breite": 320},
-        headers={"X-API-Key": "sk-valid"},
     )
-    assert resp.status_code == 401
+    assert resp.status_code == 200
 
 
-# ── Leere Keys-Liste → 401 ────────────────────────────────────────────────────
+# ── Leere Keys-Liste → offener Zugriff ───────────────────────────────────────
 
-def test_empty_keys_list_returns_401(tmp_path, monkeypatch):
+def test_empty_keys_list_allows_access(tmp_path, monkeypatch):
     f = tmp_path / "api_keys.json"
     f.write_text(json.dumps({"keys": []}))
     monkeypatch.setenv("API_KEYS_FILE", str(f))
@@ -117,6 +115,5 @@ def test_empty_keys_list_returns_401(tmp_path, monkeypatch):
     resp = test_client.post(
         "/generate",
         json={"titel": "Test", "breite": 320},
-        headers={"X-API-Key": "sk-valid"},
     )
-    assert resp.status_code == 401
+    assert resp.status_code == 200

@@ -24,9 +24,15 @@ def _load_keys() -> set[str]:
         return set()
 
 
-async def verify_api_key(x_api_key: str = Header(..., alias="X-API-Key")) -> str:
-    """FastAPI-Dependency: prüft den X-API-Key Header."""
+async def verify_api_key(x_api_key: str | None = Header(None, alias="X-API-Key")) -> str | None:
+    """FastAPI-Dependency: prüft den X-API-Key Header.
+
+    Wenn keine Keys konfiguriert sind (leere oder fehlende Datei),
+    ist der Endpunkt ohne Authentifizierung erreichbar.
+    """
     valid_keys = _load_keys()
+    if not valid_keys:
+        return None
     if x_api_key not in valid_keys:
         raise HTTPException(status_code=401, detail="Ungültiger oder fehlender API-Key")
     return x_api_key
