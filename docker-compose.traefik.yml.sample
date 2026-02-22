@@ -29,6 +29,35 @@ services:
       # Netzwerk, über das Traefik den Container erreicht
       - "traefik.docker.network=${TRAEFIK_NETWORK:-traefik}"
 
+      # ── Client-Zertifikat-Authentifizierung (mTLS) ──────────────────────────
+      # Optional. Alle folgenden Zeilen gemeinsam aktivieren.
+      #
+      # Voraussetzung: Traefik-seitige TLS-Option "mtls" definieren.
+      # Beispieldatei: traefik-mtls-options.yml.sample
+      # Dort wird festgelegt, welche CA Client-Zertifikate ausstellen darf und
+      # dass Traefik ein Zertifikat zwingend verlangt.
+      #
+      # 1) TLS-Option referenzieren – erzwingt Client-Zertifikat-Prüfung:
+      # - "traefik.http.routers.title-image.tls.options=mtls@file"
+      #
+      # 2) Middleware: Zertifikats-Attribute als HTTP-Header weiterleiten.
+      #    Traefik setzt dabei den Header "X-Forwarded-Tls-Client-Cert-Info"
+      #    mit URL-kodierten Key=Value-Paaren (z. B. CN=...,O=...).
+      # - "traefik.http.middlewares.title-image-cert.passtlsclientcert.info.subject.commonname=true"
+      # - "traefik.http.middlewares.title-image-cert.passtlsclientcert.info.subject.organization=true"
+      # - "traefik.http.middlewares.title-image-cert.passtlsclientcert.info.subject.serialnumber=true"
+      # - "traefik.http.middlewares.title-image-cert.passtlsclientcert.info.issuer.commonname=true"
+      # - "traefik.http.middlewares.title-image-cert.passtlsclientcert.info.notbefore=true"
+      # - "traefik.http.middlewares.title-image-cert.passtlsclientcert.info.notafter=true"
+      # - "traefik.http.middlewares.title-image-cert.passtlsclientcert.info.sans=true"
+      #
+      # Optional: Das vollständige PEM-Zertifikat im Header
+      # "X-Forwarded-Tls-Client-Cert" (URL-kodiert, ohne PEM-Header-Zeilen):
+      # - "traefik.http.middlewares.title-image-cert.passtlsclientcert.pem=true"
+      #
+      # 3) Middleware auf den Router anwenden:
+      # - "traefik.http.routers.title-image.middlewares=title-image-cert"
+
 networks:
   traefik:
     external: true

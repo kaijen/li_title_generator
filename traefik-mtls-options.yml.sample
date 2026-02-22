@@ -1,0 +1,31 @@
+# Traefik Dynamic Configuration – TLS-Optionen für mTLS
+#
+# Ablegen unter dem dynamic-config-Pfad von Traefik, z. B.:
+#   /etc/traefik/dynamic/mtls.yml
+#
+# Diese Datei wird von docker-compose.traefik.yml über das Label
+#   traefik.http.routers.title-image.tls.options=mtls@file
+# referenziert.
+#
+# Hinweis: Nach dem Ablegen muss Traefik die Datei nicht neu starten –
+# dynamic configs werden automatisch neu eingelesen.
+
+tls:
+  options:
+    mtls:
+      # Mindest-TLS-Version
+      minVersion: VersionTLS12
+
+      clientAuth:
+        # CA-Zertifikat(e), die Client-Zertifikate ausstellen dürfen.
+        # Mehrere CAs möglich (Array).
+        caFiles:
+          - /etc/traefik/certs/client-ca.pem
+
+        # RequireAndVerifyClientCert – Zertifikat muss vorhanden und von
+        #   einer der caFiles ausgestellt sein (empfohlen).
+        # RequireAnyClientCert   – Zertifikat muss vorhanden sein,
+        #   wird aber nicht gegen eine CA geprüft.
+        # RequestClientCert      – Zertifikat ist optional, kein Fehler
+        #   wenn es fehlt.
+        clientAuthType: RequireAndVerifyClientCert

@@ -143,7 +143,7 @@ API-Keys werden in `api_keys.json` verwaltet:
 }
 ```
 
-Die Datei wird bei **jedem Request neu eingelesen** – Keys lassen sich also ohne Neustart hinzufügen oder entfernen. Wenn die Datei fehlt, antworten alle Endpunkte mit `401`.
+Die Datei wird bei **jedem Request neu eingelesen** – Keys lassen sich also ohne Neustart hinzufügen oder entfernen. Wenn die Datei fehlt oder leer ist, ist der Service ohne Key erreichbar (offener Zugriff).
 
 ```bash
 cp api_keys.json.sample api_keys.json
@@ -191,6 +191,73 @@ Konfigurierbare Variablen in `.env`:
 | `TRAEFIK_CERTRESOLVER` | `letsencrypt` | Certificate-Resolver |
 
 Voraussetzung: Docker Compose ≥ 2.x.
+
+### Client-Zertifikat-Authentifizierung (mTLS)
+
+Traefik kann zusätzlich ein TLS-Client-Zertifikat erzwingen und dessen Attribute
+als HTTP-Header an den Backend-Container weiterleiten. Dafür sind zwei Schritte nötig:
+
+**1. Traefik-seitige TLS-Option anlegen**
+
+Beispieldatei `traefik-mtls-options.yml.sample` in den dynamic-config-Pfad von
+Traefik kopieren (z. B. `/etc/traefik/dynamic/mtls.yml`) und die CA-Datei eintragen:
+
+```yaml
+tls:
+  options:
+    mtls:
+      minVersion: VersionTLS12
+      clientAuth:
+        caFiles:
+          - /etc/traefik/certs/client-ca.pem
+        clientAuthType: RequireAndVerifyClientCert
+```
+
+**2. Labels in `docker-compose.traefik.yml` aktivieren**
+
+Den auskommentierten mTLS-Block in `docker-compose.traefik.yml` einkommentieren.
+Traefik setzt dann folgende Header, die der Service empfängt:
+
+| Header | Inhalt |
+|--------|--------|
+| `X-Forwarded-Tls-Client-Cert-Info` | URL-kodierte Zertifikats-Attribute (Subject, Issuer, SANs, Gültigkeit) |
+| `X-Forwarded-Tls-Client-Cert` | Vollständiges PEM-Zertifikat URL-kodiert (nur wenn `pem=true`) |
+
+Beispielwert von `X-Forwarded-Tls-Client-Cert-Info`:
+```
+Subject=%22CN%3Dmy-client%2CO%3DMeine+Organisation%22;Issuer=%22CN%3DMeine+CA%22
+```
+
+**curl-Beispiel mit Client-Zertifikat**
+
+```bash
+# Selbstsigniertes Client-Zertifikat erzeugen (einmalig)
+openssl req -x509 -newkey rsa:4096 -keyout client.key -out client.crt \
+  -days 365 -nodes \
+  -subj "/CN=my-client/O=Meine Organisation"
+
+# Request mit Client-Zertifikat
+curl -X POST https://title-image.example.com/generate \
+  --cert client.crt \
+  --key client.key \
+  --cacert server-ca.pem \
+  -H "Content-Type: application/json" \
+  -d '{
+    "titel": "NIS2 Compliance",
+    "text": "Umsetzung in der Praxis",
+    "hintergrund": "#1a1a2e",
+    "vordergrund": "white",
+    "breite": 1920
+  }' \
+  --output nis2-slide.png
+
+# Wenn das Server-Zertifikat von einer öffentlichen CA stammt,
+# kann --cacert entfallen (curl nutzt dann den System-Trust-Store).
+```
+
+> **Hinweis:** Bei aktiviertem mTLS und leerer `api_keys.json` reicht das
+> Client-Zertifikat als einzige Authentifizierung. Beide Methoden lassen sich
+> auch kombinieren.
 
 ---
 
