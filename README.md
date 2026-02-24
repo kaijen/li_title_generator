@@ -7,6 +7,7 @@ FastAPI-Webservice zum Erzeugen von 16:9-Titelbildern (PNG) aus JSON-Parametern 
 - [Schnellstart mit Docker](#schnellstart-mit-docker)
 - [Lokale Installation](#lokale-installation)
 - [API](#api)
+- [PowerShell-Funktion](#powershell-funktion)
 - [Authentifizierung](#authentifizierung)
 - [Umgebungsvariablen](#umgebungsvariablen)
 - [Betrieb hinter Traefik](#betrieb-hinter-traefik)
@@ -127,6 +128,109 @@ curl http://localhost:8000/health
 ### `GET /`
 
 Redirect auf `/docs` (Swagger UI).
+
+---
+
+## PowerShell-Funktion
+
+Die folgende Funktion kann in ein PowerShell-Profil (`$PROFILE`) eingefügt oder per `. .\New-TitleImage.ps1` geladen werden.
+
+Die URL wird automatisch aus der Umgebungsvariable `TITLE_IMAGE_SERVICE_URL` gelesen, sofern sie gesetzt ist. Andernfalls gilt `http://localhost:8000`.
+
+```powershell
+function New-TitleImage {
+    [CmdletBinding()]
+    param(
+        [string] $Url         = $(if ($env:TITLE_IMAGE_SERVICE_URL) { $env:TITLE_IMAGE_SERVICE_URL } else { "http://localhost:8000" }),
+
+        [Parameter(Mandatory)]
+        [string] $ApiKey,
+
+        [string] $Titel       = "",
+        [string] $Text        = "",
+        [string] $Vordergrund = "white",
+        [string] $Hintergrund = "black",
+        [int]    $Breite      = 1920,
+        [string] $Font        = "Rubik Glitch",
+        [int]    $Titelzeilen = 1,
+        [string] $Dateiname   = "",
+
+        [Alias("m")]
+        [switch] $Montagspost,
+
+        [Alias("a")]
+        [switch] $AntiPattern
+    )
+
+    if ($Montagspost) {
+        $Text = "Ein Montagspost"
+        $Font = "Barriecito"
+    }
+    elseif ($AntiPattern) {
+        $Text = "Ein Anti-Pattern"
+        $Font = "Rubik Glitch"
+    }
+
+    $body = @{
+        titel       = $Titel
+        text        = $Text
+        vordergrund = $Vordergrund
+        hintergrund = $Hintergrund
+        breite      = $Breite
+        font        = $Font
+        titelzeilen = $Titelzeilen
+        dateiname   = $Dateiname
+    } | ConvertTo-Json
+
+    $headers = @{
+        "X-API-Key"    = $ApiKey
+        "Content-Type" = "application/json"
+    }
+
+    $outFile = if ($Dateiname) {
+        $Dateiname
+    } else {
+        "linkedin_title_$(Get-Date -Format 'yyyy-MM-dd-HH-mm').png"
+    }
+
+    Invoke-WebRequest `
+        -Uri     "$Url/generate" `
+        -Method  POST `
+        -Headers $headers `
+        -Body    $body `
+        -OutFile $outFile
+
+    Write-Host "Gespeichert: $outFile"
+}
+```
+
+**Beispiele:**
+
+```powershell
+# URL per Umgebungsvariable setzen (einmalig in der Session)
+$env:TITLE_IMAGE_SERVICE_URL = "https://title-image.example.com"
+
+# Einfacher Aufruf
+New-TitleImage -ApiKey "sk-abc123" -Titel "NIS2 Compliance" -Breite 1920
+
+# Mit allen Parametern
+New-TitleImage `
+    -Url         "http://localhost:8000" `
+    -ApiKey      "sk-abc123" `
+    -Titel       "NIS2 Compliance" `
+    -Text        "Umsetzung in der Praxis" `
+    -Hintergrund "#1a1a2e" `
+    -Vordergrund "white" `
+    -Breite      1920 `
+    -Titelzeilen 2 `
+    -Dateiname   "nis2-slide.png"
+
+# Montagspost (Text = "Ein Montagspost", Font = "Barriecito")
+New-TitleImage -ApiKey "sk-abc123" -Titel "Montag, der Motivator" -m
+
+# Anti-Pattern (Text = "Ein Anti-Pattern", Font = "Rubik Glitch")
+New-TitleImage -ApiKey "sk-abc123" -Titel "God Object" -a
+```
 
 ---
 
