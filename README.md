@@ -149,12 +149,16 @@ function New-TitleImage {
         [string] $Url         = "",
         [string] $ApiKey      = "",
 
+        [Alias("t")]
         [string] $Titel       = "",
         [string] $Text        = "",
         [string] $Vordergrund = "white",
         [string] $Hintergrund = "black",
+        [Alias("b")]
         [int]    $Breite      = 1920,
+        [Alias("f")]
         [string] $Font        = "Rubik Glitch",
+        [Alias("z")]
         [int]    $Titelzeilen = 1,
         [string] $Dateiname   = "",
 
@@ -261,6 +265,9 @@ New-TitleImage `
     -Breite      1920 `
     -Titelzeilen 2 `
     -Dateiname   "nis2-slide.png"
+
+# Kurzform mit Aliases
+New-TitleImage -t "NIS2 Compliance" -b 1920 -z 2 -f "Fira Code"
 
 # Montagspost (Text = "Ein Montagspost", Font = "Barriecito")
 New-TitleImage -Titel "Montag, der Motivator" -m
