@@ -127,7 +127,12 @@ curl http://localhost:8000/health
 
 ### `GET /`
 
-Redirect auf `/docs` (Swagger UI).
+Gibt Service-Informationen zurück (kein Redirect, kein Auth erforderlich).
+
+```bash
+curl http://localhost:8000/
+# {"service": "title-image-service", "docs": "/docs"}
+```
 
 ---
 
@@ -279,7 +284,14 @@ API-Keys werden in `api_keys.json` verwaltet:
 }
 ```
 
-Die Datei wird bei **jedem Request neu eingelesen** – Keys lassen sich also ohne Neustart hinzufügen oder entfernen. Wenn die Datei fehlt oder leer ist, ist der Service ohne Key erreichbar (offener Zugriff).
+Die Datei wird bei **jedem Request neu eingelesen** – Keys lassen sich also ohne Neustart hinzufügen oder entfernen.
+
+**Sicherheits-Fallback:** Wenn `api_keys.json` fehlt oder leer ist, lehnt der Service jeden Request mit HTTP 401 ab. Offener Zugriff muss explizit erlaubt werden:
+
+```bash
+# Nur für lokale Entwicklung oder explizit ungesicherte Umgebungen
+ALLOW_UNAUTHENTICATED=true title-image-service
+```
 
 ```bash
 cp api_keys.json.sample api_keys.json
@@ -293,6 +305,7 @@ cp api_keys.json.sample api_keys.json
 | Variable | Default | Beschreibung |
 |----------|---------|--------------|
 | `API_KEYS_FILE` | `./api_keys.json` | Pfad zur API-Keys-Datei |
+| `ALLOW_UNAUTHENTICATED` | `false` | Auf `true` setzen, um offenen Zugriff zu erlauben wenn keine Keys konfiguriert sind (nur für Entwicklung) |
 | `FONT_CACHE_DIR` | `~/.cache/title-image-fonts` | Verzeichnis für heruntergeladene Fonts |
 | `PORT` | `8000` | HTTP-Port des Servers |
 | `LOG_LEVEL` | `INFO` | Log-Level (`DEBUG`, `INFO`, `WARNING`, …) |
@@ -391,9 +404,10 @@ curl -X POST https://title-image.example.com/generate \
 # kann --cacert entfallen (curl nutzt dann den System-Trust-Store).
 ```
 
-> **Hinweis:** Bei aktiviertem mTLS und leerer `api_keys.json` reicht das
+> **Hinweis:** Bei aktiviertem mTLS kann `api_keys.json` weggelassen werden,
+> wenn `ALLOW_UNAUTHENTICATED=true` gesetzt ist – dann reicht das
 > Client-Zertifikat als einzige Authentifizierung. Beide Methoden lassen sich
-> auch kombinieren.
+> auch kombinieren (mTLS + API-Key).
 
 ---
 
@@ -412,7 +426,9 @@ pytest -v
 
 Die Testsuite deckt ab:
 - API-Authentifizierung (gültige/ungültige/fehlende Keys, fehlende Datei)
+- Sicherheits-Fallback (`ALLOW_UNAUTHENTICATED`-Verhalten bei fehlender/leerer Keys-Datei)
 - HTTP-Endpunkte (`/health`, `/generate`, `/`)
 - `Content-Disposition`-Header (automatischer und expliziter Dateiname)
+- Content-Type-Validierung (falsche MIME-Types → 422)
 - Bildgenerierung (16:9-Verhältnis, Farben, Schriften, Dateiausgabe)
 - Farbauflösung inkl. vollständiger Deutsch-Tabelle
