@@ -179,14 +179,10 @@ function New-TitleImage {
         else                                        { $Url = "http://localhost:8000" }
     }
 
-    # API-Key: Parameter → Umgebungsvariable → .env
+    # API-Key: Parameter → Umgebungsvariable → .env → leer (Key ist optional)
     if (-not $ApiKey) {
         if ($env:TITLE_IMAGE_API_KEY)           { $ApiKey = $env:TITLE_IMAGE_API_KEY }
         elseif ($dotenv['TITLE_IMAGE_API_KEY']) { $ApiKey = $dotenv['TITLE_IMAGE_API_KEY'] }
-    }
-    if (-not $ApiKey) {
-        Write-Error "Kein API-Key gefunden. -ApiKey angeben, TITLE_IMAGE_API_KEY als Umgebungsvariable setzen oder in .env eintragen."
-        return
     }
 
     if ($Montagspost) {
@@ -209,10 +205,8 @@ function New-TitleImage {
         dateiname   = $Dateiname
     } | ConvertTo-Json
 
-    $headers = @{
-        "X-API-Key"    = $ApiKey
-        "Content-Type" = "application/json"
-    }
+    $headers = @{ "Content-Type" = "application/json" }
+    if ($ApiKey) { $headers["X-API-Key"] = $ApiKey }
 
     $outFile = if ($Dateiname) {
         $Dateiname
@@ -236,7 +230,7 @@ Priorität der Konfiguration (höchste zuerst):
 | Einstellung | Parameter | Umgebungsvariable | `.env`-Eintrag | Default |
 |-------------|-----------|-------------------|----------------|---------|
 | URL | `-Url` | `TITLE_IMAGE_SERVICE_URL` | `TITLE_IMAGE_SERVICE_URL` | `http://localhost:8000` |
-| API-Key | `-ApiKey` | `TITLE_IMAGE_API_KEY` | `TITLE_IMAGE_API_KEY` | – (Pflicht) |
+| API-Key | `-ApiKey` | `TITLE_IMAGE_API_KEY` | `TITLE_IMAGE_API_KEY` | – (optional) |
 
 **Beispiel `.env`:**
 
