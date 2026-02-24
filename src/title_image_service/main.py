@@ -4,7 +4,7 @@ import os
 from datetime import datetime
 
 from fastapi import Depends, FastAPI
-from fastapi.responses import RedirectResponse, Response
+from fastapi.responses import Response
 
 from .auth import verify_api_key
 from .generator import generate_image
@@ -25,7 +25,7 @@ app = FastAPI(
 
 @app.get("/", include_in_schema=False)
 async def root():
-    return RedirectResponse(url="/docs")
+    return {"service": "title-image-service", "docs": "/docs"}
 
 
 @app.get("/health")

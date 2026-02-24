@@ -27,12 +27,23 @@ def _load_keys() -> set[str]:
 async def verify_api_key(x_api_key: str | None = Header(None, alias="X-API-Key")) -> str | None:
     """FastAPI-Dependency: prüft den X-API-Key Header.
 
-    Wenn keine Keys konfiguriert sind (leere oder fehlende Datei),
-    ist der Endpunkt ohne Authentifizierung erreichbar.
+    Wenn keine Keys konfiguriert sind (leere oder fehlende Datei) und
+    ALLOW_UNAUTHENTICATED nicht auf 'true' gesetzt ist, wird jeder Request
+    mit HTTP 401 abgelehnt. Der offene Zugriff muss explizit erlaubt werden.
     """
     valid_keys = _load_keys()
     if not valid_keys:
-        return None
+        allow_unauth = os.environ.get("ALLOW_UNAUTHENTICATED", "").lower() == "true"
+        if allow_unauth:
+            logger.warning(
+                "Keine API-Keys konfiguriert. ALLOW_UNAUTHENTICATED=true ist gesetzt – "
+                "der Endpunkt ist ohne Authentifizierung erreichbar."
+            )
+            return None
+        raise HTTPException(
+            status_code=401,
+            detail="Keine API-Keys konfiguriert. Setze ALLOW_UNAUTHENTICATED=true für offenen Zugriff.",
+        )
     if x_api_key not in valid_keys:
         raise HTTPException(status_code=401, detail="Ungültiger oder fehlender API-Key")
     return x_api_key

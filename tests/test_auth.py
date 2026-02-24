@@ -39,12 +39,14 @@ def test_generate_valid_key(client):
     assert resp.content[:4] == b"\x89PNG"
 
 
-# ── GET / Redirect ────────────────────────────────────────────────────────────
+# ── GET / Service-Info ───────────────────────────────────────────────────────
 
-def test_root_redirects_to_docs(client):
-    resp = client.get("/", follow_redirects=False)
-    assert resp.status_code in (301, 302, 307, 308)
-    assert resp.headers["location"] == "/docs"
+def test_root_returns_service_info(client):
+    resp = client.get("/")
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["service"] == "title-image-service"
+    assert body["docs"] == "/docs"
 
 
 # ── Content-Disposition-Header ────────────────────────────────────────────────
@@ -84,11 +86,26 @@ def test_generate_invalid_color_returns_422(client):
     assert resp.status_code == 422
 
 
-# ── api_keys.json fehlt → offener Zugriff (kein Crash) ───────────────────────
+# ── api_keys.json fehlt → 401 (kein stiller Open-Access) ────────────────────
 
-def test_missing_keys_file_allows_access(tmp_path, monkeypatch):
+def test_missing_keys_file_denies_access(tmp_path, monkeypatch):
     absent = tmp_path / "nonexistent.json"
-    monkeypatch.setenv("API_KEYS_FILE", str(absent))
+    monkeypatch.delenv("ALLOW_UNAUTHENTICATED", raising=False)
+    import title_image_service.auth as auth_mod
+    monkeypatch.setattr(auth_mod, "_KEYS_FILE", absent)
+
+    from title_image_service.main import app
+    test_client = TestClient(app)
+    resp = test_client.post(
+        "/generate",
+        json={"titel": "Test", "breite": 320},
+    )
+    assert resp.status_code == 401
+
+
+def test_missing_keys_file_with_allow_unauthenticated(tmp_path, monkeypatch):
+    absent = tmp_path / "nonexistent.json"
+    monkeypatch.setenv("ALLOW_UNAUTHENTICATED", "true")
     import title_image_service.auth as auth_mod
     monkeypatch.setattr(auth_mod, "_KEYS_FILE", absent)
 
@@ -101,12 +118,28 @@ def test_missing_keys_file_allows_access(tmp_path, monkeypatch):
     assert resp.status_code == 200
 
 
-# ── Leere Keys-Liste → offener Zugriff ───────────────────────────────────────
+# ── Leere Keys-Liste → 401 ───────────────────────────────────────────────────
 
-def test_empty_keys_list_allows_access(tmp_path, monkeypatch):
+def test_empty_keys_list_denies_access(tmp_path, monkeypatch):
     f = tmp_path / "api_keys.json"
     f.write_text(json.dumps({"keys": []}))
-    monkeypatch.setenv("API_KEYS_FILE", str(f))
+    monkeypatch.delenv("ALLOW_UNAUTHENTICATED", raising=False)
+    import title_image_service.auth as auth_mod
+    monkeypatch.setattr(auth_mod, "_KEYS_FILE", f)
+
+    from title_image_service.main import app
+    test_client = TestClient(app)
+    resp = test_client.post(
+        "/generate",
+        json={"titel": "Test", "breite": 320},
+    )
+    assert resp.status_code == 401
+
+
+def test_empty_keys_list_with_allow_unauthenticated(tmp_path, monkeypatch):
+    f = tmp_path / "api_keys.json"
+    f.write_text(json.dumps({"keys": []}))
+    monkeypatch.setenv("ALLOW_UNAUTHENTICATED", "true")
     import title_image_service.auth as auth_mod
     monkeypatch.setattr(auth_mod, "_KEYS_FILE", f)
 
@@ -117,3 +150,15 @@ def test_empty_keys_list_allows_access(tmp_path, monkeypatch):
         json={"titel": "Test", "breite": 320},
     )
     assert resp.status_code == 200
+
+
+# ── Content-Type-Validierung ─────────────────────────────────────────────────
+
+def test_wrong_content_type_returns_422(client):
+    # FastAPI lehnt Requests ohne application/json mit 422 ab
+    resp = client.post(
+        "/generate",
+        content=b"titel=Test",
+        headers={"X-API-Key": "sk-valid", "Content-Type": "application/x-www-form-urlencoded"},
+    )
+    assert resp.status_code == 422
