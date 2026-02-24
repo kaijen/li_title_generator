@@ -146,8 +146,13 @@ Die URL wird automatisch aus der Umgebungsvariable `TITLE_IMAGE_SERVICE_URL` gel
 function New-TitleImage {
     [CmdletBinding()]
     param(
-        [string] $Url         = "",
-        [string] $ApiKey      = "",
+        [string] $Url             = "",
+        [string] $ApiKey          = "",
+
+        # Client-Zertifikat (optional) – entweder PFX-Datei oder Thumbprint
+        [string] $CertPfx         = "",   # Pfad zur PFX/P12-Datei
+        [string] $CertPfxPass     = "",   # Passwort der PFX-Datei (optional)
+        [string] $CertThumbprint  = "",   # Thumbprint aus Windows-Zertifikatspeicher
 
         [Alias("t")]
         [string] $Titel       = "",
@@ -194,6 +199,38 @@ function New-TitleImage {
         elseif ($dotenv['TITLE_IMAGE_API_KEY']) { $ApiKey = $dotenv['TITLE_IMAGE_API_KEY'] }
     }
 
+    # Client-Zertifikat: Parameter → Umgebungsvariable → .env → keines
+    if (-not $CertPfx) {
+        if ($env:TITLE_IMAGE_CERT_PFX)           { $CertPfx = $env:TITLE_IMAGE_CERT_PFX }
+        elseif ($dotenv['TITLE_IMAGE_CERT_PFX']) { $CertPfx = $dotenv['TITLE_IMAGE_CERT_PFX'] }
+    }
+    if (-not $CertPfxPass) {
+        if ($env:TITLE_IMAGE_CERT_PFX_PASS)           { $CertPfxPass = $env:TITLE_IMAGE_CERT_PFX_PASS }
+        elseif ($dotenv['TITLE_IMAGE_CERT_PFX_PASS']) { $CertPfxPass = $dotenv['TITLE_IMAGE_CERT_PFX_PASS'] }
+    }
+    if (-not $CertThumbprint) {
+        if ($env:TITLE_IMAGE_CERT_THUMBPRINT)           { $CertThumbprint = $env:TITLE_IMAGE_CERT_THUMBPRINT }
+        elseif ($dotenv['TITLE_IMAGE_CERT_THUMBPRINT']) { $CertThumbprint = $dotenv['TITLE_IMAGE_CERT_THUMBPRINT'] }
+    }
+
+    # Zertifikat laden – PFX-Datei hat Vorrang vor Thumbprint
+    $cert = $null
+    if ($CertPfx) {
+        $cert = if ($CertPfxPass) {
+            New-Object System.Security.Cryptography.X509Certificates.X509Certificate2($CertPfx, $CertPfxPass)
+        } else {
+            New-Object System.Security.Cryptography.X509Certificates.X509Certificate2($CertPfx)
+        }
+    } elseif ($CertThumbprint) {
+        $cert = Get-ChildItem -Path Cert:\CurrentUser\My, Cert:\LocalMachine\My -ErrorAction SilentlyContinue |
+                    Where-Object { $_.Thumbprint -eq $CertThumbprint } |
+                    Select-Object -First 1
+        if (-not $cert) {
+            Write-Error "Kein Zertifikat mit Thumbprint '$CertThumbprint' im Zertifikatspeicher gefunden."
+            return
+        }
+    }
+
     if ($Montagspost) {
         $Text = "Ein Montagspost"
         $Font = "Barriecito"
@@ -223,12 +260,16 @@ function New-TitleImage {
         "linkedin_title_$(Get-Date -Format 'yyyy-MM-dd-HH-mm').png"
     }
 
-    Invoke-WebRequest `
-        -Uri     "$Url/generate" `
-        -Method  POST `
-        -Headers $headers `
-        -Body    $body `
-        -OutFile $outFile
+    $iwrParams = @{
+        Uri     = "$Url/generate"
+        Method  = "POST"
+        Headers = $headers
+        Body    = $body
+        OutFile = $outFile
+    }
+    if ($cert) { $iwrParams["Certificate"] = $cert }
+
+    Invoke-WebRequest @iwrParams
 
     Write-Host "Gespeichert: $outFile"
 }
@@ -240,12 +281,25 @@ Priorität der Konfiguration (höchste zuerst):
 |-------------|-----------|-------------------|----------------|---------|
 | URL | `-Url` | `TITLE_IMAGE_SERVICE_URL` | `TITLE_IMAGE_SERVICE_URL` | `http://localhost:8000` |
 | API-Key | `-ApiKey` | `TITLE_IMAGE_API_KEY` | `TITLE_IMAGE_API_KEY` | – (optional) |
+| PFX-Datei | `-CertPfx` | `TITLE_IMAGE_CERT_PFX` | `TITLE_IMAGE_CERT_PFX` | – (optional) |
+| PFX-Passwort | `-CertPfxPass` | `TITLE_IMAGE_CERT_PFX_PASS` | `TITLE_IMAGE_CERT_PFX_PASS` | – (optional) |
+| Thumbprint | `-CertThumbprint` | `TITLE_IMAGE_CERT_THUMBPRINT` | `TITLE_IMAGE_CERT_THUMBPRINT` | – (optional) |
+
+> **Hinweis:** `-CertPfx` und `-CertThumbprint` schließen sich gegenseitig aus – wird beides angegeben, hat die PFX-Datei Vorrang.
 
 **Beispiel `.env`:**
 
 ```dotenv
 TITLE_IMAGE_SERVICE_URL=https://title-image.example.com
 TITLE_IMAGE_API_KEY=sk-abc123
+
+# Client-Zertifikat (eine der beiden Varianten):
+# Variante A – PFX-Datei
+TITLE_IMAGE_CERT_PFX=C:\certs\client.pfx
+TITLE_IMAGE_CERT_PFX_PASS=geheim
+
+# Variante B – Thumbprint aus Windows-Zertifikatspeicher
+# TITLE_IMAGE_CERT_THUMBPRINT=A1B2C3D4E5F6...
 ```
 
 **Beispiele:**
@@ -274,6 +328,14 @@ New-TitleImage -Titel "Montag, der Motivator" -m
 
 # Anti-Pattern (Text = "Ein Anti-Pattern", Font = "Rubik Glitch")
 New-TitleImage -Titel "God Object" -a
+
+# Mit Client-Zertifikat aus PFX-Datei
+New-TitleImage -t "NIS2 Compliance" -b 1920 `
+    -CertPfx "C:\certs\client.pfx" -CertPfxPass "geheim"
+
+# Mit Client-Zertifikat aus Windows-Zertifikatspeicher (Thumbprint)
+New-TitleImage -t "NIS2 Compliance" -b 1920 `
+    -CertThumbprint "A1B2C3D4E5F6A1B2C3D4E5F6A1B2C3D4E5F6A1B2"
 ```
 
 ---
