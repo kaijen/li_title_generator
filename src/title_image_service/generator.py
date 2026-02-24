@@ -311,6 +311,20 @@ def generate_image(data: dict, output_path: str | None = None) -> bytes | str:
                + (gap if titel_lines and text_lines else 0)
                + block_height(text_lines, text_font))
 
+    # Skalierung wenn Gesamtblock die Bildhöhe übersteigt
+    _target_h = int(hoehe * 0.85)
+    if total_h > _target_h > 0:
+        scale      = _target_h / total_h
+        titel_size = max(8, int(titel_size * scale))
+        titel_font = load_font(titel_size)
+        text_size  = max(10, int(titel_size * 0.40))
+        text_font  = load_font(text_size)
+        gap        = max(10, int(titel_size * 0.30))
+        text_lines = wrap_text(text, text_font, max_text_w, draw) if text else []
+        total_h    = (block_height(titel_lines, titel_font)
+                      + (gap if titel_lines and text_lines else 0)
+                      + block_height(text_lines, text_font))
+
     y = (hoehe - total_h) // 2
 
     def draw_lines(lines, font, leading=1.3):
