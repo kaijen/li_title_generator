@@ -24,15 +24,29 @@ def _load_keys() -> set[str]:
         return set()
 
 
+_LOCALHOST_HOSTS = {"127.0.0.1", "::1", "localhost"}
+
+
+def _is_localhost_only() -> bool:
+    return os.environ.get("HOST", "0.0.0.0").lower() in _LOCALHOST_HOSTS
+
+
 async def verify_api_key(x_api_key: str | None = Header(None, alias="X-API-Key")) -> str | None:
     """FastAPI-Dependency: prüft den X-API-Key Header.
 
-    Wenn keine Keys konfiguriert sind (leere oder fehlende Datei) und
-    ALLOW_UNAUTHENTICATED nicht auf 'true' gesetzt ist, wird jeder Request
-    mit HTTP 401 abgelehnt. Der offene Zugriff muss explizit erlaubt werden.
+    Wenn keine Keys konfiguriert sind (leere oder fehlende Datei), wird
+    offener Zugriff automatisch erlaubt, wenn der Service nur auf localhost
+    lauscht (HOST=127.0.0.1 / ::1 / localhost). Andernfalls muss
+    ALLOW_UNAUTHENTICATED=true explizit gesetzt werden.
     """
     valid_keys = _load_keys()
     if not valid_keys:
+        if _is_localhost_only():
+            logger.warning(
+                "Keine API-Keys konfiguriert. Service läuft nur auf localhost – "
+                "offener Zugriff wird automatisch erlaubt."
+            )
+            return None
         allow_unauth = os.environ.get("ALLOW_UNAUTHENTICATED", "").lower() == "true"
         if allow_unauth:
             logger.warning(
@@ -42,7 +56,7 @@ async def verify_api_key(x_api_key: str | None = Header(None, alias="X-API-Key")
             return None
         raise HTTPException(
             status_code=401,
-            detail="Keine API-Keys konfiguriert. Setze ALLOW_UNAUTHENTICATED=true für offenen Zugriff.",
+            detail="Keine API-Keys konfiguriert. Service auf localhost starten oder ALLOW_UNAUTHENTICATED=true setzen.",
         )
     if x_api_key not in valid_keys:
         raise HTTPException(status_code=401, detail="Ungültiger oder fehlender API-Key")

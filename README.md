@@ -286,14 +286,19 @@ API-Keys werden in `api_keys.json` verwaltet:
 
 Die Datei wird bei **jedem Request neu eingelesen** – Keys lassen sich also ohne Neustart hinzufügen oder entfernen.
 
-**Sicherheits-Fallback:** Wenn `api_keys.json` fehlt oder leer ist, lehnt der Service jeden Request mit HTTP 401 ab. Offener Zugriff muss explizit erlaubt werden:
+**Verhalten ohne konfigurierte Keys:**
+
+| Situation | Verhalten |
+|-----------|-----------|
+| `HOST=127.0.0.1` (localhost) | Offener Zugriff automatisch erlaubt – keine Umgebungsvariable nötig |
+| `HOST=0.0.0.0` (Standard) | Jeder Request wird mit HTTP 401 abgelehnt |
+| `HOST=0.0.0.0` + `ALLOW_UNAUTHENTICATED=true` | Offener Zugriff explizit erlaubt |
 
 ```bash
-# Nur für lokale Entwicklung oder explizit ungesicherte Umgebungen
-ALLOW_UNAUTHENTICATED=true title-image-service
-```
+# Lokale Entwicklung ohne Keys – einfach auf localhost binden
+HOST=127.0.0.1 title-image-service
 
-```bash
+# Produktiv: Keys pflegen
 cp api_keys.json.sample api_keys.json
 # Eigene Keys eintragen
 ```
@@ -305,9 +310,10 @@ cp api_keys.json.sample api_keys.json
 | Variable | Default | Beschreibung |
 |----------|---------|--------------|
 | `API_KEYS_FILE` | `./api_keys.json` | Pfad zur API-Keys-Datei |
-| `ALLOW_UNAUTHENTICATED` | `false` | Auf `true` setzen, um offenen Zugriff zu erlauben wenn keine Keys konfiguriert sind (nur für Entwicklung) |
-| `FONT_CACHE_DIR` | `~/.cache/title-image-fonts` | Verzeichnis für heruntergeladene Fonts |
+| `HOST` | `0.0.0.0` | Bind-Adresse; `127.0.0.1` erlaubt offenen Zugriff ohne Keys automatisch |
 | `PORT` | `8000` | HTTP-Port des Servers |
+| `ALLOW_UNAUTHENTICATED` | `false` | Auf `true` setzen, um offenen Zugriff auf `0.0.0.0` ohne Keys zu erlauben (nur für Entwicklung) |
+| `FONT_CACHE_DIR` | `~/.cache/title-image-fonts` | Verzeichnis für heruntergeladene Fonts |
 | `LOG_LEVEL` | `INFO` | Log-Level (`DEBUG`, `INFO`, `WARNING`, …) |
 
 ---
@@ -426,7 +432,8 @@ pytest -v
 
 Die Testsuite deckt ab:
 - API-Authentifizierung (gültige/ungültige/fehlende Keys, fehlende Datei)
-- Sicherheits-Fallback (`ALLOW_UNAUTHENTICATED`-Verhalten bei fehlender/leerer Keys-Datei)
+- Automatischer offener Zugriff bei `HOST=127.0.0.1` ohne Keys
+- `ALLOW_UNAUTHENTICATED`-Verhalten bei `HOST=0.0.0.0`
 - HTTP-Endpunkte (`/health`, `/generate`, `/`)
 - `Content-Disposition`-Header (automatischer und expliziter Dateiname)
 - Content-Type-Validierung (falsche MIME-Types → 422)

@@ -65,7 +65,7 @@ def run():
     import uvicorn
     uvicorn.run(
         "title_image_service.main:app",
-        host="0.0.0.0",
+        host=os.getenv("HOST", "0.0.0.0"),
         port=int(os.getenv("PORT", 8000)),
         reload=False,
     )
