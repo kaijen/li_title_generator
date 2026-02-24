@@ -28,7 +28,7 @@ _LOCALHOST_HOSTS = {"127.0.0.1", "::1", "localhost"}
 
 
 def _is_localhost_only() -> bool:
-    return os.environ.get("HOST", "0.0.0.0").lower() in _LOCALHOST_HOSTS
+    return os.environ.get("HOST", "127.0.0.1").lower() in _LOCALHOST_HOSTS
 
 
 async def verify_api_key(x_api_key: str | None = Header(None, alias="X-API-Key")) -> str | None:

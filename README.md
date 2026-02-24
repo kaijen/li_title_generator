@@ -4,14 +4,20 @@ FastAPI-Webservice zum Erzeugen von 16:9-Titelbildern (PNG) aus JSON-Parametern 
 
 ## Inhalt
 
-- [Schnellstart mit Docker](#schnellstart-mit-docker)
-- [Lokale Installation](#lokale-installation)
-- [API](#api)
-- [PowerShell-Funktion](#powershell-funktion)
-- [Authentifizierung](#authentifizierung)
-- [Umgebungsvariablen](#umgebungsvariablen)
-- [Betrieb hinter Traefik](#betrieb-hinter-traefik)
-- [Tests](#tests)
+- [title-image-service](#title-image-service)
+  - [Inhalt](#inhalt)
+  - [Schnellstart mit Docker](#schnellstart-mit-docker)
+  - [Lokale Installation](#lokale-installation)
+  - [API](#api)
+    - [`POST /generate`](#post-generate)
+    - [`GET /health`](#get-health)
+    - [`GET /`](#get-)
+  - [PowerShell-Funktion](#powershell-funktion)
+  - [Authentifizierung](#authentifizierung)
+  - [Umgebungsvariablen](#umgebungsvariablen)
+  - [Betrieb hinter Traefik](#betrieb-hinter-traefik)
+    - [Client-Zertifikat-Authentifizierung (mTLS)](#client-zertifikat-authentifizierung-mtls)
+  - [Tests](#tests)
 
 ---
 
@@ -144,6 +150,114 @@ Die URL wird automatisch aus der Umgebungsvariable `TITLE_IMAGE_SERVICE_URL` gel
 
 ```powershell
 function New-TitleImage {
+    <#
+    .SYNOPSIS
+        Erzeugt ein 16:9-Titelbild (PNG) über den title-image-service.
+
+    .DESCRIPTION
+        Sendet einen POST-Request an /generate und speichert das zurückgegebene
+        PNG lokal. URL und API-Key werden aus Parametern, Umgebungsvariablen oder
+        einer .env-Datei im aktuellen Verzeichnis gelesen (Priorität: Parameter >
+        Umgebungsvariable > .env > Default).
+
+        Für mTLS-gesicherte Endpunkte kann ein Client-Zertifikat als PFX-Datei
+        oder über den Windows-Zertifikatspeicher (Thumbprint) übergeben werden.
+
+    .PARAMETER Url
+        URL des title-image-service, z. B. "https://title-image.example.com".
+        Default: TITLE_IMAGE_SERVICE_URL (Umgebungsvariable/.env) oder http://localhost:8000.
+
+    .PARAMETER ApiKey
+        API-Key (X-API-Key-Header). Optional, wenn der Service ohne Keys betrieben wird.
+        Default: TITLE_IMAGE_API_KEY (Umgebungsvariable/.env).
+
+    .PARAMETER CertPfx
+        Pfad zu einer PFX/P12-Datei für mTLS-Client-Authentifizierung.
+        Hat Vorrang vor -CertThumbprint.
+
+    .PARAMETER CertPfxPass
+        Passwort zur PFX-Datei. Leer lassen, wenn die Datei ungeschützt ist.
+
+    .PARAMETER CertThumbprint
+        Thumbprint eines Zertifikats aus dem Windows-Zertifikatspeicher
+        (CurrentUser\My oder LocalMachine\My).
+
+    .PARAMETER Titel
+        Titeltext des Bilds. Alias: -t
+
+    .PARAMETER Text
+        Untertitel oder Fließtext. Leer lässt das Textfeld frei.
+
+    .PARAMETER Vordergrund
+        Schriftfarbe: englischer Name ("white"), Hex ("#1a1a2e") oder
+        deutscher Name ("weiß", "schwarz", "rot", …). Default: "white"
+
+    .PARAMETER Hintergrund
+        Hintergrundfarbe (gleiche Formate wie -Vordergrund). Default: "black"
+
+    .PARAMETER Breite
+        Bildbreite in Pixeln; die Höhe wird als 9/16 der Breite berechnet.
+        Alias: -b  Default: 1920
+
+    .PARAMETER Font
+        Google-Fonts-Name oder installierter Systemfont. Alias: -f
+        Default: "Rubik Glitch"
+
+    .PARAMETER Titelzeilen
+        Anzahl der Zeilen, auf die der Titel aufgeteilt wird. Alias: -z  Default: 1
+
+    .PARAMETER Dateiname
+        Lokaler Dateiname der gespeicherten PNG-Datei.
+        Leer oder weggelassen → linkedin_title_<YYYY-MM-DD-HH-mm>.png
+
+    .PARAMETER Montagspost
+        Setzt Text auf "Ein Montagspost" und Font auf "Barriecito". Alias: -m
+
+    .PARAMETER AntiPattern
+        Setzt Text auf "Ein Anti-Pattern" und Font auf "Rubik Glitch". Alias: -a
+
+    .EXAMPLE
+        New-TitleImage -Titel "NIS2 Compliance" -Breite 1920
+
+        URL und API-Key aus .env; automatischer Dateiname.
+
+    .EXAMPLE
+        New-TitleImage -t "NIS2 Compliance" -b 1920 -z 2 -f "Fira Code"
+
+        Kurzform mit Aliases.
+
+    .EXAMPLE
+        New-TitleImage -Titel "Montag, der Motivator" -m
+
+        Montagspost: Text und Font werden automatisch gesetzt.
+
+    .EXAMPLE
+        New-TitleImage -Titel "God Object" -a
+
+        Anti-Pattern-Post.
+
+    .EXAMPLE
+        New-TitleImage -t "NIS2 Compliance" -b 1920 `
+            -CertPfx "C:\certs\client.pfx" -CertPfxPass "geheim"
+
+        mTLS mit PFX-Datei.
+
+    .EXAMPLE
+        New-TitleImage -t "NIS2 Compliance" -b 1920 `
+            -CertThumbprint "A1B2C3D4E5F6A1B2C3D4E5F6A1B2C3D4E5F6A1B2"
+
+        mTLS mit Zertifikat aus dem Windows-Zertifikatspeicher.
+
+    .NOTES
+        Konfigurationspriorität (höchste zuerst):
+          Parameter > Umgebungsvariable > .env-Datei (KEY=VALUE) > Default
+
+        .env-Variablen: TITLE_IMAGE_SERVICE_URL, TITLE_IMAGE_API_KEY,
+        TITLE_IMAGE_CERT_PFX, TITLE_IMAGE_CERT_PFX_PASS, TITLE_IMAGE_CERT_THUMBPRINT
+
+        -CertPfx und -CertThumbprint schließen sich gegenseitig aus;
+        wird beides angegeben, hat -CertPfx Vorrang.
+    #>
     [CmdletBinding()]
     param(
         [string] $Url             = "",
@@ -360,7 +474,7 @@ Die Datei wird bei **jedem Request neu eingelesen** – Keys lassen sich also oh
 | Situation | Verhalten |
 |-----------|-----------|
 | `HOST=127.0.0.1` (localhost) | Offener Zugriff automatisch erlaubt – keine Umgebungsvariable nötig |
-| `HOST=0.0.0.0` (Standard) | Jeder Request wird mit HTTP 401 abgelehnt |
+| `HOST=0.0.0.0` | Jeder Request wird mit HTTP 401 abgelehnt |
 | `HOST=0.0.0.0` + `ALLOW_UNAUTHENTICATED=true` | Offener Zugriff explizit erlaubt |
 
 ```bash
@@ -379,7 +493,7 @@ cp api_keys.json.sample api_keys.json
 | Variable | Default | Beschreibung |
 |----------|---------|--------------|
 | `API_KEYS_FILE` | `./api_keys.json` | Pfad zur API-Keys-Datei |
-| `HOST` | `0.0.0.0` | Bind-Adresse; `127.0.0.1` erlaubt offenen Zugriff ohne Keys automatisch |
+| `HOST` | `127.0.0.1` | Bind-Adresse; `127.0.0.1` erlaubt offenen Zugriff ohne Keys automatisch |
 | `PORT` | `8000` | HTTP-Port des Servers |
 | `ALLOW_UNAUTHENTICATED` | `false` | Auf `true` setzen, um offenen Zugriff auf `0.0.0.0` ohne Keys zu erlauben (nur für Entwicklung) |
 | `FONT_CACHE_DIR` | `~/.cache/title-image-fonts` | Verzeichnis für heruntergeladene Fonts |
