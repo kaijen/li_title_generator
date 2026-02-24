@@ -141,10 +141,8 @@ Die URL wird automatisch aus der Umgebungsvariable `TITLE_IMAGE_SERVICE_URL` gel
 function New-TitleImage {
     [CmdletBinding()]
     param(
-        [string] $Url         = $(if ($env:TITLE_IMAGE_SERVICE_URL) { $env:TITLE_IMAGE_SERVICE_URL } else { "http://localhost:8000" }),
-
-        [Parameter(Mandatory)]
-        [string] $ApiKey,
+        [string] $Url         = "",
+        [string] $ApiKey      = "",
 
         [string] $Titel       = "",
         [string] $Text        = "",
@@ -161,6 +159,35 @@ function New-TitleImage {
         [Alias("a")]
         [switch] $AntiPattern
     )
+
+    # .env im aktuellen Verzeichnis einlesen (KEY=VALUE, # Kommentare werden übersprungen)
+    $dotenv = @{}
+    $dotenvPath = Join-Path $PWD ".env"
+    if (Test-Path $dotenvPath) {
+        Get-Content $dotenvPath |
+            Where-Object { $_ -match '^\s*[^#\s]' -and $_ -match '=' } |
+            ForEach-Object {
+                $key, $val = $_ -split '=', 2
+                $dotenv[$key.Trim()] = $val.Trim().Trim('"').Trim("'")
+            }
+    }
+
+    # URL: Parameter → Umgebungsvariable → .env → Default
+    if (-not $Url) {
+        if ($env:TITLE_IMAGE_SERVICE_URL)           { $Url = $env:TITLE_IMAGE_SERVICE_URL }
+        elseif ($dotenv['TITLE_IMAGE_SERVICE_URL']) { $Url = $dotenv['TITLE_IMAGE_SERVICE_URL'] }
+        else                                        { $Url = "http://localhost:8000" }
+    }
+
+    # API-Key: Parameter → Umgebungsvariable → .env
+    if (-not $ApiKey) {
+        if ($env:TITLE_IMAGE_API_KEY)           { $ApiKey = $env:TITLE_IMAGE_API_KEY }
+        elseif ($dotenv['TITLE_IMAGE_API_KEY']) { $ApiKey = $dotenv['TITLE_IMAGE_API_KEY'] }
+    }
+    if (-not $ApiKey) {
+        Write-Error "Kein API-Key gefunden. -ApiKey angeben, TITLE_IMAGE_API_KEY als Umgebungsvariable setzen oder in .env eintragen."
+        return
+    }
 
     if ($Montagspost) {
         $Text = "Ein Montagspost"
@@ -204,16 +231,27 @@ function New-TitleImage {
 }
 ```
 
+Priorität der Konfiguration (höchste zuerst):
+
+| Einstellung | Parameter | Umgebungsvariable | `.env`-Eintrag | Default |
+|-------------|-----------|-------------------|----------------|---------|
+| URL | `-Url` | `TITLE_IMAGE_SERVICE_URL` | `TITLE_IMAGE_SERVICE_URL` | `http://localhost:8000` |
+| API-Key | `-ApiKey` | `TITLE_IMAGE_API_KEY` | `TITLE_IMAGE_API_KEY` | – (Pflicht) |
+
+**Beispiel `.env`:**
+
+```dotenv
+TITLE_IMAGE_SERVICE_URL=https://title-image.example.com
+TITLE_IMAGE_API_KEY=sk-abc123
+```
+
 **Beispiele:**
 
 ```powershell
-# URL per Umgebungsvariable setzen (einmalig in der Session)
-$env:TITLE_IMAGE_SERVICE_URL = "https://title-image.example.com"
+# API-Key und URL aus .env – kein expliziter Parameter nötig
+New-TitleImage -Titel "NIS2 Compliance" -Breite 1920
 
-# Einfacher Aufruf
-New-TitleImage -ApiKey "sk-abc123" -Titel "NIS2 Compliance" -Breite 1920
-
-# Mit allen Parametern
+# Mit allen Parametern (überschreibt .env und Umgebungsvariablen)
 New-TitleImage `
     -Url         "http://localhost:8000" `
     -ApiKey      "sk-abc123" `
@@ -226,10 +264,10 @@ New-TitleImage `
     -Dateiname   "nis2-slide.png"
 
 # Montagspost (Text = "Ein Montagspost", Font = "Barriecito")
-New-TitleImage -ApiKey "sk-abc123" -Titel "Montag, der Motivator" -m
+New-TitleImage -Titel "Montag, der Motivator" -m
 
 # Anti-Pattern (Text = "Ein Anti-Pattern", Font = "Rubik Glitch")
-New-TitleImage -ApiKey "sk-abc123" -Titel "God Object" -a
+New-TitleImage -Titel "God Object" -a
 ```
 
 ---
