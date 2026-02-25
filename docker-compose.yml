@@ -1,5 +1,7 @@
 services:
   title-image:
+    container_name: ${CONTAINER_NAME:-title-image}
+    hostname: ${CONTAINER_NAME:-title-image}
     build: .
     ports:
       - "8000:8000"
@@ -9,6 +11,8 @@ services:
     environment:
       - API_KEYS_FILE=/config/api_keys.json
       - FONT_CACHE_DIR=/fonts-cache
+      - HOST=${HOST:-0.0.0.0}
+      - ALLOW_UNAUTHENTICATED=${ALLOW_UNAUTHENTICATED:-false}
     restart: unless-stopped
 
 volumes:

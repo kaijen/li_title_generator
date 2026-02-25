@@ -23,7 +23,9 @@ services:
       - "traefik.http.routers.title-image.entrypoints=${TRAEFIK_ENTRYPOINT:-websecure}"
       # TLS
       - "traefik.http.routers.title-image.tls=true"
-      - "traefik.http.routers.title-image.tls.certresolver=${TRAEFIK_CERTRESOLVER:-letsencrypt}"
+      # Nur aktivieren wenn TRAEFIK_CERTRESOLVER gesetzt ist (Docker Compose
+      # unterstützt keine bedingte Label-Inklusion):
+      # - "traefik.http.routers.title-image.tls.certresolver=${TRAEFIK_CERTRESOLVER}"
       # Interner Port des Containers
       - "traefik.http.services.title-image.loadbalancer.server.port=8000"
       # Netzwerk, über das Traefik den Container erreicht
