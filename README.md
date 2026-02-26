@@ -26,9 +26,8 @@ FastAPI-Webservice zum Erzeugen von 16:9-Titelbildern (PNG) aus JSON-Parametern 
 ## Schnellstart mit Docker
 
 ```bash
-# Betriebskonfiguration einmalig einrichten
+# Konfiguration einmalig einrichten
 cd deploy
-cp compose.yml.sample compose.yml
 cp .env.sample .env
 cp api_keys.json.sample api_keys.json
 # IMAGE_TAG und eigene Keys in api_keys.json eintragen
@@ -300,9 +299,31 @@ docker compose up -d
 ```
 
 Das Overlay (`deploy/compose.traefik.yml`):
-- deaktiviert das direkte Port-Binding aus `docker-compose.yml`
+- deaktiviert das direkte Port-Binding aus `compose.yml`
 - verbindet den Container mit dem externen Traefik-Netzwerk
 - setzt Traefik-Labels für Routing und TLS
+
+### Anpassungen über Overlays
+
+`compose.yml` wird nicht manuell geändert. Alle instanzspezifischen Erweiterungen
+(zusätzliche Netzwerke, Resource-Limits, Log-Treiber, …) kommen als lokales Overlay:
+
+```bash
+# deploy/compose.override.yml – nicht versioniert
+services:
+  title-image-prod:
+    deploy:
+      resources:
+        limits:
+          memory: 512m
+    logging:
+      driver: journald
+```
+
+```bash
+docker compose -f compose.yml -f compose.override.yml up -d
+# Oder COMPOSE_FILE=compose.yml:compose.override.yml in .env setzen
+```
 
 Konfigurierbare Variablen in `.env`:
 

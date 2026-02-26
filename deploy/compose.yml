@@ -1,14 +1,16 @@
-# Produktions-Compose-Datei.
-# Kopieren und anpassen:
-#   cp compose.yml.sample compose.yml
-#   # IMAGE_TAG, TRAEFIK_HOST etc. in .env setzen
-#   docker compose up -d
+# Produktions-Compose-Datei – versioniert, keine manuelle Kopie nötig.
+# Anpassungen (Netzwerke, Labels, Limits) über ein lokales Overlay vornehmen:
+#
+#   docker compose -f compose.yml -f compose.override.yml up -d
+#
+# Instanzspezifische Werte (IMAGE_TAG, TRAEFIK_HOST, …) in .env eintragen:
+#   cp .env.sample .env
 
 services:
-  title-image:
+  title-image-prod:
     image: ${IMAGE_NAME:-ghcr.io/kaijen/title-image}:${IMAGE_TAG:-latest}
-    container_name: ${CONTAINER_NAME:-title-image}
-    hostname: ${CONTAINER_NAME:-title-image}
+    container_name: ${CONTAINER_NAME:-title-image-prod}
+    hostname: ${CONTAINER_NAME:-title-image-prod}
     ports:
       - "${PORT:-8000}:8000"
     volumes:

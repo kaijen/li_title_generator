@@ -10,7 +10,7 @@
 # Benötigt Docker Compose >= 2.x (für "!reset").
 
 services:
-  title-image:
+  title-image-prod:
     ports: !reset []        # Deaktiviert die ports-Angabe aus compose.yml;
                             # Traefik übernimmt das Routing.
     networks:
