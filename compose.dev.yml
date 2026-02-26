@@ -11,7 +11,7 @@ services:
     build:
       context: .
       args:
-        VERSION: "0.0.0.dev0"
+        VERSION: "${VERSION:-undefined}"
     ports:
       - "8000:8000"
     volumes:

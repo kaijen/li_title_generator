@@ -62,6 +62,16 @@ title-image-service
 
 Der Service lauscht standardmäßig auf Port `8000`. Der Port lässt sich über die Umgebungsvariable `PORT` ändern.
 
+**Alternativ mit Docker** (`compose.dev.yml`, baut Image direkt aus dem Quellcode):
+
+```bash
+# just installieren (einmalig)
+winget install Casey.Just   # Windows
+# brew install just         # macOS
+
+just dev   # Version aus hatch version, ALLOW_UNAUTHENTICATED=true
+```
+
 ---
 
 ## API
@@ -664,19 +674,20 @@ Danach ist `title-image-service` als Kommando verfügbar. Der Service benötigt 
 **Docker-Image mit eingebetteter Version bauen:**
 
 ```bash
-VERSION=$(git describe --tags --always)
-
-docker build \
-  --build-arg VERSION=${VERSION} \
-  -t ghcr.io/kaijen/title-image:${VERSION} \
-  -t ghcr.io/kaijen/title-image:latest \
-  .
+just build    # liest Version automatisch aus hatch version
+just export   # exportiert Image als title-image-<VERSION>.tar.gz
 ```
 
-Das Build-Argument `VERSION` wird ins Python-Paket (über `SETUPTOOLS_SCM_PRETEND_VERSION_FOR_TITLE_IMAGE_SERVICE`) und als OCI-Label (`org.opencontainers.image.version`) eingebaut.
+`just` liest die Version über `hatch version` (Fallback: `git describe --tags --always`) und übergibt sie als `--build-arg VERSION=` an Docker. Die Version landet im Python-Paket (über `SETUPTOOLS_SCM_PRETEND_VERSION_FOR_TITLE_IMAGE_SERVICE`) und als OCI-Label `org.opencontainers.image.version`.
+
+Das exportierte Archiv lässt sich auf einem anderen Rechner ohne Registry importieren:
+
+```bash
+docker load -i title-image-<VERSION>.tar.gz
+```
 
 ```bash
 # Version im fertigen Image prüfen
-docker inspect ghcr.io/kaijen/title-image:${VERSION} \
+VERSION=$(hatch version) docker inspect ghcr.io/kaijen/title-image:${VERSION} \
   --format '{{index .Config.Labels "org.opencontainers.image.version"}}'
 ```
