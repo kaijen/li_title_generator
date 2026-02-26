@@ -18,9 +18,10 @@ title-image-service/
 ├── CLAUDE.md
 ├── pyproject.toml              # Paket-Metadaten und Abhängigkeiten
 ├── Dockerfile
-├── docker-compose.yml
+├── compose.dev.yml             # Lokale Entwicklung (build: .)
 ├── .dockerignore
-├── api_keys.json               # API-Keys (nicht im Image, wird gemountet)
+├── scripts/
+│   └── install_fonts.py        # Font-Download (wird im Dockerfile ausgeführt)
 ├── src/
 │   └── title_image_service/
 │       ├── __init__.py
@@ -28,23 +29,33 @@ title-image-service/
 │       ├── auth.py             # API-Key-Validierung
 │       ├── generator.py        # Bildgenerierung (aus generate.py übernommen)
 │       └── models.py           # Pydantic-Modelle für Request/Response
-└── tests/
-    ├── test_auth.py
-    └── test_generate.py
+├── tests/
+│   ├── test_auth.py
+│   └── test_generate.py
+└── deploy/                     # Betriebskonfiguration (nicht vollständig versioniert)
+    ├── .gitignore              # ignoriert compose.yml, .env, api_keys.json
+    ├── compose.yml.sample      # Template → cp compose.yml.sample compose.yml
+    ├── compose.traefik.yml     # Traefik-Overlay (versioniert, nur .env-Variablen)
+    ├── .env.sample             # Template → cp .env.sample .env
+    └── api_keys.json.sample    # Template → cp api_keys.json.sample api_keys.json
 ```
 
 ---
 
 ## Paket-Setup (pyproject.toml)
 
-Standard-PEP-517-Paket mit `hatchling` oder `setuptools`.
+Standard-PEP-517-Paket mit `hatchling` und `hatch-vcs`.
 Abhängigkeiten: `fastapi`, `uvicorn[standard]`, `pillow`.
 Entry-Point: `title-image-service` startet `uvicorn`.
 
 ```toml
+[build-system]
+requires = ["hatchling", "hatch-vcs"]
+build-backend = "hatchling.build"
+
 [project]
 name = "title-image-service"
-version = "0.1.0"
+dynamic = ["version"]
 requires-python = ">=3.11"
 dependencies = [
     "fastapi>=0.110",
@@ -54,7 +65,18 @@ dependencies = [
 
 [project.scripts]
 title-image-service = "title_image_service.main:run"
+
+[tool.hatch.version]
+source = "vcs"
+
+[tool.hatch.version.raw-options]
+version_scheme = "post-release"
+local_scheme = "node-and-date"
 ```
+
+Die Version wird automatisch aus Git-Tags gelesen. Auf einem Tag `v1.2.0`
+ergibt sich `1.2.0`, drei Commits danach `1.2.0.post3+g4a2b1c.d20260225`.
+Erstes Tag setzen mit: `git tag v0.1.0`
 
 Installation lokal: `pip install -e .`
 
@@ -144,71 +166,43 @@ Alle Felder optional mit denselben Defaults wie im CLI-Script.
 
 ## Dockerfile
 
+Das Dockerfile akzeptiert ein `VERSION`-Build-Argument, das die Python-Paketversion
+und das OCI-Image-Label setzt. Ohne Angabe greift der Default `0.0.0.dev0`.
+
+Da im Docker-Build-Kontext kein `.git` vorhanden ist, wird die Version über
+`SETUPTOOLS_SCM_PRETEND_VERSION_FOR_TITLE_IMAGE_SERVICE` an `hatch-vcs` übergeben.
+
 ```dockerfile
 FROM python:3.12-slim
 
-# Systemabhängigkeiten: fontconfig für fc-match, curl für Font-Download
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    fontconfig \
-    curl \
-    && rm -rf /var/lib/apt/lists/*
+    fontconfig curl && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
 
-# Paket installieren
 COPY pyproject.toml .
 COPY src/ src/
-RUN pip install --no-cache-dir .
+ARG VERSION=0.0.0.dev0
+RUN SETUPTOOLS_SCM_PRETEND_VERSION_FOR_TITLE_IMAGE_SERVICE=${VERSION} \
+    pip install --no-cache-dir .
 
-# ── Fonts vorinstallieren ────────────────────────────────────────────────────
-# Fonts werden zur Build-Zeit von Google Fonts heruntergeladen und in den
-# Font-Cache gelegt. Damit entfällt der Download beim ersten Request.
-# Betroffene Fonts: Rubik Glitch, Libertinus Mono, JetBrains Mono, Fira Code
-
-RUN mkdir -p /fonts-cache
-
-# Google Fonts liefert bei älterem User-Agent TTF – direkt verwendbar.
-# Das Skript lädt je Font die CSS-Antwort, extrahiert die TTF-URL und speichert
-# die Datei unter /fonts-cache/<font_name>.ttf
-RUN python3 - << 'PYEOF'
-import urllib.request, re, sys
-from pathlib import Path
-
-CACHE = Path("/fonts-cache")
-UA = "Mozilla/4.0 (compatible; MSIE 6.0; Windows NT 5.1)"
-
-FONTS = {
-    "rubik_glitch":     "Rubik+Glitch",
-    "libertinus_mono":  "Libertinus+Mono",
-    "jetbrains_mono":   "JetBrains+Mono",
-    "fira_code":        "Fira+Code",
-}
-
-for cache_name, gf_name in FONTS.items():
-    url = f"https://fonts.googleapis.com/css2?family={gf_name}&display=swap"
-    req = urllib.request.Request(url, headers={"User-Agent": UA})
-    css = urllib.request.urlopen(req, timeout=30).read().decode()
-    urls = re.findall(r"url\((https://[^)]+\.(?:ttf|otf))\)", css)
-    if not urls:
-        print(f"WARN: Kein TTF/OTF für {gf_name} gefunden", file=sys.stderr)
-        continue
-    font_data = urllib.request.urlopen(urls[0], timeout=30).read()
-    ext = ".otf" if urls[0].endswith(".otf") else ".ttf"
-    out = CACHE / (cache_name + ext)
-    out.write_bytes(font_data)
-    print(f"OK  {out.name}  ({len(font_data):,} Bytes)")
-PYEOF
+COPY scripts/install_fonts.py /tmp/install_fonts.py
+RUN mkdir -p /fonts-cache \
+    && FONT_CACHE_DIR=/fonts-cache python3 /tmp/install_fonts.py \
+    && rm /tmp/install_fonts.py
 
 ENV FONT_CACHE_DIR=/fonts-cache
-
-# api_keys.json wird zur Laufzeit gemountet, nicht ins Image gebacken
 ENV API_KEYS_FILE=/config/api_keys.json
 
-EXPOSE 8000
+LABEL org.opencontainers.image.version="${VERSION}"
 
+RUN useradd --no-create-home --shell /bin/false appuser \
+    && chown -R appuser:appuser /app /fonts-cache
+USER appuser
+
+EXPOSE 8000
 HEALTHCHECK --interval=30s --timeout=5s \
   CMD python -c "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"
-
 CMD ["title-image-service"]
 ```
 
@@ -217,30 +211,61 @@ Volume gemountet (enthält Secrets).
 
 ---
 
-## docker-compose.yml
+## Build-Workflow
 
-```yaml
-services:
-  title-image:
-    build: .
-    ports:
-      - "8000:8000"
-    volumes:
-      - ./api_keys.json:/config/api_keys.json:ro
-      - font-cache:/fonts-cache
-    environment:
-      - API_KEYS_FILE=/config/api_keys.json
-      - FONT_CACHE_DIR=/fonts-cache
-    restart: unless-stopped
+```bash
+VERSION=$(git describe --tags --always)
 
-volumes:
-  font-cache:
+docker build \
+  --build-arg VERSION=${VERSION} \
+  -t ghcr.io/kaijen/title-image:${VERSION} \
+  -t ghcr.io/kaijen/title-image:latest \
+  .
 ```
 
-Der Font-Cache als benanntes Volume ist optional — die vier vorinstallierten
-Fonts (Rubik Glitch, Libertinus Mono, JetBrains Mono, Fira Code) sind bereits
-im Image. Das Volume ist sinnvoll, wenn zur Laufzeit weitere Fonts von Google
-Fonts nachgeladen werden sollen und diese Neustarts überleben sollen.
+---
+
+## Betrieb (deploy/)
+
+`deploy/` enthält versionierte Templates und nicht versionierte Betriebsdateien.
+`deploy/.gitignore` ignoriert `compose.yml`, `.env` und `api_keys.json`.
+
+### Einmalig einrichten
+
+```bash
+cd deploy
+cp compose.yml.sample compose.yml
+cp .env.sample .env
+cp api_keys.json.sample api_keys.json
+# IMAGE_TAG, TRAEFIK_HOST etc. in .env anpassen
+# API-Keys in api_keys.json eintragen
+```
+
+### Starten
+
+```bash
+cd deploy
+docker compose up -d
+
+# Mit Traefik-Overlay: COMPOSE_FILE=compose.yml:compose.traefik.yml in .env setzen
+docker compose up -d
+```
+
+`compose.traefik.yml` ist versioniert, weil es ausschließlich Variablen aus `.env`
+nutzt und keine instanzspezifischen Hardcodes enthält. Weitere Anpassungen
+kommen als zusätzliches Overlay (nicht versioniert).
+
+---
+
+## Lokale Entwicklung
+
+```bash
+docker compose -f compose.dev.yml up --build
+```
+
+`compose.dev.yml` baut das Image direkt aus dem Quellcode (`build: .`),
+setzt `ALLOW_UNAUTHENTICATED=true` und mountet `deploy/api_keys.json.sample`
+als Platzhalter.
 
 ---
 

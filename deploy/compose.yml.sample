@@ -1,10 +1,16 @@
+# Produktions-Compose-Datei.
+# Kopieren und anpassen:
+#   cp compose.yml.sample compose.yml
+#   # IMAGE_TAG, TRAEFIK_HOST etc. in .env setzen
+#   docker compose up -d
+
 services:
   title-image:
+    image: ${IMAGE_NAME:-ghcr.io/kaijen/title-image}:${IMAGE_TAG:-latest}
     container_name: ${CONTAINER_NAME:-title-image}
     hostname: ${CONTAINER_NAME:-title-image}
-    build: .
     ports:
-      - "8000:8000"
+      - "${PORT:-8000}:8000"
     volumes:
       - ./api_keys.json:/config/api_keys.json:ro
       - font-cache:/fonts-cache

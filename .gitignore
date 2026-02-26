@@ -39,6 +39,10 @@ htmlcov/
 
 # ── Docker ────────────────────────────────────────────────────────────────────
 .docker/
+# Betriebskonfiguration (deploy/ hat eigene .gitignore)
+deploy/compose.yml
+deploy/.env
+deploy/api_keys.json
 
 # ── IDEs ──────────────────────────────────────────────────────────────────────
 .idea/

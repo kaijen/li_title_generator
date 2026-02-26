@@ -1,8 +1,7 @@
 # Overlay für den Betrieb hinter einem bestehenden Traefik-Container.
 #
 # Verwendung:
-#   cp docker-compose.traefik.yml.sample docker-compose.traefik.yml
-#   # In .env: COMPOSE_FILE=docker-compose.yml:docker-compose.traefik.yml setzen
+#   # In .env: COMPOSE_FILE=compose.yml:compose.traefik.yml setzen
 #   docker compose up -d
 #
 # Voraussetzung: Ein laufender Traefik-Container im Netzwerk ${TRAEFIK_NETWORK},
@@ -12,7 +11,7 @@
 
 services:
   title-image:
-    ports: !reset []        # Deaktiviert die ports-Angabe aus docker-compose.yml;
+    ports: !reset []        # Deaktiviert die ports-Angabe aus compose.yml;
                             # Traefik übernimmt das Routing.
     networks:
       - traefik

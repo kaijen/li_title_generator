@@ -1,0 +1,23 @@
+# Lokale Entwicklung: baut Image direkt aus dem Quellcode.
+#
+# Verwendung:
+#   docker compose -f compose.dev.yml up --build
+#
+# api_keys.json.sample wird als Platzhalter gemountet; ALLOW_UNAUTHENTICATED=true
+# erlaubt Requests ohne gültigen Key.
+
+services:
+  title-image:
+    build:
+      context: .
+      args:
+        VERSION: "0.0.0.dev0"
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./deploy/api_keys.json.sample:/config/api_keys.json:ro
+    environment:
+      - API_KEYS_FILE=/config/api_keys.json
+      - FONT_CACHE_DIR=/fonts-cache
+      - ALLOW_UNAUTHENTICATED=true
+    restart: "no"

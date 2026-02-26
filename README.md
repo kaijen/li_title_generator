@@ -18,17 +18,21 @@ FastAPI-Webservice zum Erzeugen von 16:9-Titelbildern (PNG) aus JSON-Parametern 
   - [Betrieb hinter Traefik](#betrieb-hinter-traefik)
     - [Client-Zertifikat-Authentifizierung (mTLS)](#client-zertifikat-authentifizierung-mtls)
   - [Tests](#tests)
+  - [Paket bauen](#paket-bauen)
 
 ---
 
 ## Schnellstart mit Docker
 
 ```bash
-# API-Keys anlegen
+# Betriebskonfiguration einmalig einrichten
+cd deploy
+cp compose.yml.sample compose.yml
+cp .env.sample .env
 cp api_keys.json.sample api_keys.json
-# api_keys.json anpassen (eigene Keys eintragen)
+# IMAGE_TAG und eigene Keys in api_keys.json eintragen
 
-# Container bauen und starten
+# Container starten
 docker compose up -d
 
 # Testbild erzeugen
@@ -482,7 +486,7 @@ Die Datei wird bei **jedem Request neu eingelesen** – Keys lassen sich also oh
 HOST=127.0.0.1 title-image-service
 
 # Produktiv: Keys pflegen
-cp api_keys.json.sample api_keys.json
+cp deploy/api_keys.json.sample deploy/api_keys.json
 # Eigene Keys eintragen
 ```
 
@@ -506,15 +510,14 @@ cp api_keys.json.sample api_keys.json
 Für den Betrieb hinter einem bestehenden Traefik-Container steht ein separates Compose-Overlay bereit.
 
 ```bash
-# Konfiguration anlegen
-cp .env.sample .env
+cd deploy
 # .env anpassen: TRAEFIK_HOST, TRAEFIK_NETWORK, …
+# COMPOSE_FILE=compose.yml:compose.traefik.yml in .env setzen
 
-# Mit Traefik-Overlay starten (deaktiviert Port-Binding, aktiviert Labels)
-docker compose -f docker-compose.yml -f docker-compose.traefik.yml up -d
+docker compose up -d
 ```
 
-Das Overlay (`docker-compose.traefik.yml`):
+Das Overlay (`deploy/compose.traefik.yml`):
 - deaktiviert das direkte Port-Binding aus `docker-compose.yml`
 - verbindet den Container mit dem externen Traefik-Netzwerk
 - setzt Traefik-Labels für Routing und TLS
@@ -551,9 +554,9 @@ tls:
         clientAuthType: RequireAndVerifyClientCert
 ```
 
-**2. Labels in `docker-compose.traefik.yml` aktivieren**
+**2. Labels in `deploy/compose.traefik.yml` aktivieren**
 
-Den auskommentierten mTLS-Block in `docker-compose.traefik.yml` einkommentieren.
+Den auskommentierten mTLS-Block in `deploy/compose.traefik.yml` einkommentieren.
 Traefik setzt dann folgende Header, die der Service empfängt:
 
 | Header | Inhalt |
@@ -622,3 +625,58 @@ Die Testsuite deckt ab:
 - Content-Type-Validierung (falsche MIME-Types → 422)
 - Bildgenerierung (16:9-Verhältnis, Farben, Schriften, Dateiausgabe)
 - Farbauflösung inkl. vollständiger Deutsch-Tabelle
+
+---
+
+## Paket bauen
+
+Das Paket lässt sich als Wheel (`.whl`) bauen – zur Weitergabe oder für Deployments ohne Docker.
+
+**Voraussetzung:** Das Repo muss einen Git-Tag tragen. Die Version wird von `hatch-vcs` aus `git describe --tags` gelesen. Ohne Tag gibt `hatch-vcs` einen Fehler aus.
+
+```bash
+# Erstes Tag setzen, falls noch keins existiert
+git tag v0.1.0
+
+# Build-Tool installieren (einmalig)
+pip install build
+
+# Wheel und Source-Distribution bauen
+python -m build
+```
+
+Das erzeugt im Verzeichnis `dist/`:
+
+- `title_image_service-<VERSION>-py3-none-any.whl` – installierbares Wheel
+- `title_image_service-<VERSION>.tar.gz` – Source-Distribution
+
+Die Version im Dateinamen entspricht dem aktuellen Git-Tag (z. B. `1.2.0`) bzw. dem Post-Release-Format bei späteren Commits (`1.2.0.post3+g4a2b1c.d20260226`).
+
+**Installation aus dem Wheel:**
+
+```bash
+pip install dist/title_image_service-1.2.0-py3-none-any.whl
+title-image-service
+```
+
+Danach ist `title-image-service` als Kommando verfügbar. Der Service benötigt zur Laufzeit eine `api_keys.json` und die Umgebungsvariablen wie unter [Umgebungsvariablen](#umgebungsvariablen) beschrieben.
+
+**Docker-Image mit eingebetteter Version bauen:**
+
+```bash
+VERSION=$(git describe --tags --always)
+
+docker build \
+  --build-arg VERSION=${VERSION} \
+  -t ghcr.io/kaijen/title-image:${VERSION} \
+  -t ghcr.io/kaijen/title-image:latest \
+  .
+```
+
+Das Build-Argument `VERSION` wird ins Python-Paket (über `SETUPTOOLS_SCM_PRETEND_VERSION_FOR_TITLE_IMAGE_SERVICE`) und als OCI-Label (`org.opencontainers.image.version`) eingebaut.
+
+```bash
+# Version im fertigen Image prüfen
+docker inspect ghcr.io/kaijen/title-image:${VERSION} \
+  --format '{{index .Config.Labels "org.opencontainers.image.version"}}'
+```
