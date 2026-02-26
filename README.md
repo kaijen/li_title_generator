@@ -20,6 +20,7 @@ FastAPI-Webservice zum Erzeugen von 16:9-Titelbildern (PNG) aus JSON-Parametern 
   - [Tests](#tests)
   - [Task-Runner (just)](#task-runner-just)
   - [Paket bauen](#paket-bauen)
+  - [SBOM](#sbom)
 
 ---
 
@@ -451,8 +452,9 @@ Die Version bestimmt `just` automatisch über `hatch version` (Fallback: `git de
 | `just wheel` | Python-Wheel und Source-Distribution bauen (`dist/`) |
 | `just dev` | Lokale Entwicklung – baut Image mit aktueller Version, startet via `compose.dev.yml` auf Port 8001 |
 | `just build` | Docker-Image bauen und taggen (`ghcr.io/kaijen/title-image:<VERSION>` + `latest`) |
-| `just push` | Image bauen und zu `ghcr.io` pushen (beide Tags) |
+| `just push` | Image bauen, SBOM-Attestation einbetten und zu `ghcr.io` pushen (beide Tags) |
 | `just export` | Docker-Image als `title-image-<VERSION>.tar.gz` exportieren |
+| `just sbom` | SBOM aus gepushtem Image erzeugen (`title-image-<VERSION>.sbom.json`) |
 
 ### Image zu ghcr.io pushen
 
@@ -529,3 +531,36 @@ docker load -i title-image-<VERSION>.tar.gz
 VERSION=$(hatch version) docker inspect ghcr.io/kaijen/title-image:${VERSION} \
   --format '{{index .Config.Labels "org.opencontainers.image.version"}}'
 ```
+
+---
+
+## SBOM
+
+`just push` bettet beim Push automatisch eine SBOM (Software Bill of Materials)
+als OCI-Attestation ins Image ein – über Docker BuildKit (`--sbom=true`). Sie
+enthält alle Python-Pakete und OS-Packages aus den Image-Schichten.
+
+**SBOM im Registry abrufen** (nach `just push`):
+
+```bash
+docker buildx imagetools inspect ghcr.io/kaijen/title-image:latest \
+  --format '{{ json .SBOM }}'
+```
+
+**Standalone SBOM-Datei erzeugen** (für Audits oder Release-Anhänge):
+
+Voraussetzung: [`syft`](https://github.com/anchore/syft) installieren.
+
+```bash
+winget install anchore.syft   # Windows
+brew install syft              # macOS / Linux
+```
+
+```bash
+just sbom
+# → title-image-<VERSION>.sbom.json (CycloneDX JSON)
+```
+
+Die Datei deckt beide SBOM-Ebenen ab: Python-Pakete (`fastapi`, `uvicorn`,
+`pillow`, transitive Abhängigkeiten) und OS-Packages aus dem Basis-Image
+(`python:3.12-slim`).

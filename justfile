@@ -31,10 +31,14 @@ dev:
 build:
     docker build --build-arg VERSION={{version}} -t ghcr.io/kaijen/title-image:{{docker_tag}} -t ghcr.io/kaijen/title-image:latest .
 
-# Docker-Image zu ghcr.io pushen (setzt voraus: docker login ghcr.io)
-push: build
-    docker push ghcr.io/kaijen/title-image:{{docker_tag}}
-    docker push ghcr.io/kaijen/title-image:latest
+# Docker-Image bauen, SBOM-Attestation einbetten und zu ghcr.io pushen (setzt voraus: docker login ghcr.io)
+push:
+    docker buildx build --sbom=true --provenance=mode=max --build-arg VERSION={{version}} -t ghcr.io/kaijen/title-image:{{docker_tag}} -t ghcr.io/kaijen/title-image:latest --push .
+
+# SBOM aus gepushtem Image erzeugen (CycloneDX JSON; setzt voraus: syft – winget install anchore.syft)
+sbom:
+    syft ghcr.io/kaijen/title-image:{{docker_tag}} -o cyclonedx-json=title-image-{{docker_tag}}.sbom.json
+    @echo "SBOM: title-image-{{docker_tag}}.sbom.json"
 
 # Docker-Image als Tarball exportieren (erzeugt title-image-<VERSION>.tar.gz)
 [unix]
