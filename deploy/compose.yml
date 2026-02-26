@@ -11,8 +11,8 @@ name: ${COMPOSE_PROJECT_NAME:-title-image-prod}
 services:
   title-image-prod:
     image: ${IMAGE_NAME:-ghcr.io/kaijen/title-image}:${IMAGE_TAG:-latest}
-    container_name: ${CONTAINER_NAME:-title-image-prod}
-    hostname: ${CONTAINER_NAME:-title-image-prod}
+    container_name: ${CONTAINER_NAME:-title-image}
+    hostname: ${CONTAINER_NAME:-title-image}
     ports:
       - "${PORT:-8000}:8000"
     volumes:

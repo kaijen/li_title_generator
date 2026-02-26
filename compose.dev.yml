@@ -14,7 +14,7 @@ name: title-image-dev
 
 services:
   title-image:
-    container_name: title-image-dev
+    container_name: title-image
     build:
       context: .
       args:
