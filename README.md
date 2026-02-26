@@ -18,6 +18,7 @@ FastAPI-Webservice zum Erzeugen von 16:9-Titelbildern (PNG) aus JSON-Parametern 
   - [Betrieb hinter Traefik](#betrieb-hinter-traefik)
     - [Client-Zertifikat-Authentifizierung (mTLS)](#client-zertifikat-authentifizierung-mtls)
   - [Tests](#tests)
+  - [Task-Runner (just)](#task-runner-just)
   - [Paket bauen](#paket-bauen)
 
 ---
@@ -158,250 +159,21 @@ curl http://localhost:8000/
 
 ## PowerShell-Funktion
 
-Die folgende Funktion kann in ein PowerShell-Profil (`$PROFILE`) eingefügt oder per `. .\New-TitleImage.ps1` geladen werden.
+Die Funktion `New-TitleImage` liegt als eigenständiges Skript unter
+[`scripts/New-TitleImage.ps1`](scripts/New-TitleImage.ps1).
 
-Die URL wird automatisch aus der Umgebungsvariable `TITLE_IMAGE_SERVICE_URL` gelesen, sofern sie gesetzt ist. Andernfalls gilt `http://localhost:8000`.
+**Einbinden (einmalig):**
 
 ```powershell
-function New-TitleImage {
-    <#
-    .SYNOPSIS
-        Erzeugt ein 16:9-Titelbild (PNG) über den title-image-service.
+# Option A – für die aktuelle Session laden (dot-sourcing)
+. .\scripts\New-TitleImage.ps1
 
-    .DESCRIPTION
-        Sendet einen POST-Request an /generate und speichert das zurückgegebene
-        PNG lokal. URL und API-Key werden aus Parametern, Umgebungsvariablen oder
-        einer .env-Datei im aktuellen Verzeichnis gelesen (Priorität: Parameter >
-        Umgebungsvariable > .env > Default).
-
-        Für mTLS-gesicherte Endpunkte kann ein Client-Zertifikat als PFX-Datei
-        oder über den Windows-Zertifikatspeicher (Thumbprint) übergeben werden.
-
-    .PARAMETER Url
-        URL des title-image-service, z. B. "https://title-image.example.com".
-        Default: TITLE_IMAGE_SERVICE_URL (Umgebungsvariable/.env) oder http://localhost:8000.
-
-    .PARAMETER ApiKey
-        API-Key (X-API-Key-Header). Optional, wenn der Service ohne Keys betrieben wird.
-        Default: TITLE_IMAGE_API_KEY (Umgebungsvariable/.env).
-
-    .PARAMETER CertPfx
-        Pfad zu einer PFX/P12-Datei für mTLS-Client-Authentifizierung.
-        Hat Vorrang vor -CertThumbprint.
-
-    .PARAMETER CertPfxPass
-        Passwort zur PFX-Datei. Leer lassen, wenn die Datei ungeschützt ist.
-
-    .PARAMETER CertThumbprint
-        Thumbprint eines Zertifikats aus dem Windows-Zertifikatspeicher
-        (CurrentUser\My oder LocalMachine\My).
-
-    .PARAMETER Titel
-        Titeltext des Bilds. Alias: -t
-
-    .PARAMETER Text
-        Untertitel oder Fließtext. Leer lässt das Textfeld frei.
-
-    .PARAMETER Vordergrund
-        Schriftfarbe: englischer Name ("white"), Hex ("#1a1a2e") oder
-        deutscher Name ("weiß", "schwarz", "rot", …). Default: "white"
-
-    .PARAMETER Hintergrund
-        Hintergrundfarbe (gleiche Formate wie -Vordergrund). Default: "black"
-
-    .PARAMETER Breite
-        Bildbreite in Pixeln; die Höhe wird als 9/16 der Breite berechnet.
-        Alias: -b  Default: 1920
-
-    .PARAMETER Font
-        Google-Fonts-Name oder installierter Systemfont. Alias: -f
-        Default: "Rubik Glitch"
-
-    .PARAMETER Titelzeilen
-        Anzahl der Zeilen, auf die der Titel aufgeteilt wird. Alias: -z  Default: 1
-
-    .PARAMETER Dateiname
-        Lokaler Dateiname der gespeicherten PNG-Datei.
-        Leer oder weggelassen → linkedin_title_<YYYY-MM-DD-HH-mm>.png
-
-    .PARAMETER Montagspost
-        Setzt Text auf "Ein Montagspost" und Font auf "Barriecito". Alias: -m
-
-    .PARAMETER AntiPattern
-        Setzt Text auf "Ein Anti-Pattern" und Font auf "Rubik Glitch". Alias: -a
-
-    .EXAMPLE
-        New-TitleImage -Titel "NIS2 Compliance" -Breite 1920
-
-        URL und API-Key aus .env; automatischer Dateiname.
-
-    .EXAMPLE
-        New-TitleImage -t "NIS2 Compliance" -b 1920 -z 2 -f "Fira Code"
-
-        Kurzform mit Aliases.
-
-    .EXAMPLE
-        New-TitleImage -Titel "Montag, der Motivator" -m
-
-        Montagspost: Text und Font werden automatisch gesetzt.
-
-    .EXAMPLE
-        New-TitleImage -Titel "God Object" -a
-
-        Anti-Pattern-Post.
-
-    .EXAMPLE
-        New-TitleImage -t "NIS2 Compliance" -b 1920 `
-            -CertPfx "C:\certs\client.pfx" -CertPfxPass "geheim"
-
-        mTLS mit PFX-Datei.
-
-    .EXAMPLE
-        New-TitleImage -t "NIS2 Compliance" -b 1920 `
-            -CertThumbprint "A1B2C3D4E5F6A1B2C3D4E5F6A1B2C3D4E5F6A1B2"
-
-        mTLS mit Zertifikat aus dem Windows-Zertifikatspeicher.
-
-    .NOTES
-        Konfigurationspriorität (höchste zuerst):
-          Parameter > Umgebungsvariable > .env-Datei (KEY=VALUE) > Default
-
-        .env-Variablen: TITLE_IMAGE_SERVICE_URL, TITLE_IMAGE_API_KEY,
-        TITLE_IMAGE_CERT_PFX, TITLE_IMAGE_CERT_PFX_PASS, TITLE_IMAGE_CERT_THUMBPRINT
-
-        -CertPfx und -CertThumbprint schließen sich gegenseitig aus;
-        wird beides angegeben, hat -CertPfx Vorrang.
-    #>
-    [CmdletBinding()]
-    param(
-        [string] $Url             = "",
-        [string] $ApiKey          = "",
-
-        # Client-Zertifikat (optional) – entweder PFX-Datei oder Thumbprint
-        [string] $CertPfx         = "",   # Pfad zur PFX/P12-Datei
-        [string] $CertPfxPass     = "",   # Passwort der PFX-Datei (optional)
-        [string] $CertThumbprint  = "",   # Thumbprint aus Windows-Zertifikatspeicher
-
-        [Alias("t")]
-        [string] $Titel       = "",
-        [string] $Text        = "",
-        [string] $Vordergrund = "white",
-        [string] $Hintergrund = "black",
-        [Alias("b")]
-        [int]    $Breite      = 1920,
-        [Alias("f")]
-        [string] $Font        = "Rubik Glitch",
-        [Alias("z")]
-        [int]    $Titelzeilen = 1,
-        [string] $Dateiname   = "",
-
-        [Alias("m")]
-        [switch] $Montagspost,
-
-        [Alias("a")]
-        [switch] $AntiPattern
-    )
-
-    # .env im aktuellen Verzeichnis einlesen (KEY=VALUE, # Kommentare werden übersprungen)
-    $dotenv = @{}
-    $dotenvPath = Join-Path $PWD ".env"
-    if (Test-Path $dotenvPath) {
-        Get-Content $dotenvPath |
-            Where-Object { $_ -match '^\s*[^#\s]' -and $_ -match '=' } |
-            ForEach-Object {
-                $key, $val = $_ -split '=', 2
-                $dotenv[$key.Trim()] = $val.Trim().Trim('"').Trim("'")
-            }
-    }
-
-    # URL: Parameter → Umgebungsvariable → .env → Default
-    if (-not $Url) {
-        if ($env:TITLE_IMAGE_SERVICE_URL)           { $Url = $env:TITLE_IMAGE_SERVICE_URL }
-        elseif ($dotenv['TITLE_IMAGE_SERVICE_URL']) { $Url = $dotenv['TITLE_IMAGE_SERVICE_URL'] }
-        else                                        { $Url = "http://localhost:8000" }
-    }
-
-    # API-Key: Parameter → Umgebungsvariable → .env → leer (Key ist optional)
-    if (-not $ApiKey) {
-        if ($env:TITLE_IMAGE_API_KEY)           { $ApiKey = $env:TITLE_IMAGE_API_KEY }
-        elseif ($dotenv['TITLE_IMAGE_API_KEY']) { $ApiKey = $dotenv['TITLE_IMAGE_API_KEY'] }
-    }
-
-    # Client-Zertifikat: Parameter → Umgebungsvariable → .env → keines
-    if (-not $CertPfx) {
-        if ($env:TITLE_IMAGE_CERT_PFX)           { $CertPfx = $env:TITLE_IMAGE_CERT_PFX }
-        elseif ($dotenv['TITLE_IMAGE_CERT_PFX']) { $CertPfx = $dotenv['TITLE_IMAGE_CERT_PFX'] }
-    }
-    if (-not $CertPfxPass) {
-        if ($env:TITLE_IMAGE_CERT_PFX_PASS)           { $CertPfxPass = $env:TITLE_IMAGE_CERT_PFX_PASS }
-        elseif ($dotenv['TITLE_IMAGE_CERT_PFX_PASS']) { $CertPfxPass = $dotenv['TITLE_IMAGE_CERT_PFX_PASS'] }
-    }
-    if (-not $CertThumbprint) {
-        if ($env:TITLE_IMAGE_CERT_THUMBPRINT)           { $CertThumbprint = $env:TITLE_IMAGE_CERT_THUMBPRINT }
-        elseif ($dotenv['TITLE_IMAGE_CERT_THUMBPRINT']) { $CertThumbprint = $dotenv['TITLE_IMAGE_CERT_THUMBPRINT'] }
-    }
-
-    # Zertifikat laden – PFX-Datei hat Vorrang vor Thumbprint
-    $cert = $null
-    if ($CertPfx) {
-        $cert = if ($CertPfxPass) {
-            New-Object System.Security.Cryptography.X509Certificates.X509Certificate2($CertPfx, $CertPfxPass)
-        } else {
-            New-Object System.Security.Cryptography.X509Certificates.X509Certificate2($CertPfx)
-        }
-    } elseif ($CertThumbprint) {
-        $cert = Get-ChildItem -Path Cert:\CurrentUser\My, Cert:\LocalMachine\My -ErrorAction SilentlyContinue |
-                    Where-Object { $_.Thumbprint -eq $CertThumbprint } |
-                    Select-Object -First 1
-        if (-not $cert) {
-            Write-Error "Kein Zertifikat mit Thumbprint '$CertThumbprint' im Zertifikatspeicher gefunden."
-            return
-        }
-    }
-
-    if ($Montagspost) {
-        $Text = "Ein Montagspost"
-        $Font = "Barriecito"
-    }
-    elseif ($AntiPattern) {
-        $Text = "Ein Anti-Pattern"
-        $Font = "Rubik Glitch"
-    }
-
-    $body = @{
-        titel       = $Titel
-        text        = $Text
-        vordergrund = $Vordergrund
-        hintergrund = $Hintergrund
-        breite      = $Breite
-        font        = $Font
-        titelzeilen = $Titelzeilen
-        dateiname   = $Dateiname
-    } | ConvertTo-Json
-
-    $headers = @{ "Content-Type" = "application/json" }
-    if ($ApiKey) { $headers["X-API-Key"] = $ApiKey }
-
-    $outFile = if ($Dateiname) {
-        $Dateiname
-    } else {
-        "linkedin_title_$(Get-Date -Format 'yyyy-MM-dd-HH-mm').png"
-    }
-
-    $iwrParams = @{
-        Uri     = "$Url/generate"
-        Method  = "POST"
-        Headers = $headers
-        Body    = $body
-        OutFile = $outFile
-    }
-    if ($cert) { $iwrParams["Certificate"] = $cert }
-
-    Invoke-WebRequest @iwrParams
-
-    Write-Host "Gespeichert: $outFile"
-}
+# Option B – dauerhaft ins PowerShell-Profil eintragen
+Add-Content $PROFILE ". $(Resolve-Path .\scripts\New-TitleImage.ps1)"
 ```
+
+URL und API-Key werden automatisch aus einer `.env`-Datei im aktuellen
+Verzeichnis gelesen. Alternativ können Umgebungsvariablen oder Parameter gesetzt werden.
 
 Priorität der Konfiguration (höchste zuerst):
 
@@ -638,6 +410,30 @@ Die Testsuite deckt ab:
 
 ---
 
+## Task-Runner (just)
+
+Das Projekt nutzt [`just`](https://github.com/casey/just) als Task-Runner für alle häufigen Entwicklungs- und Build-Aufgaben.
+
+**Installation (einmalig):**
+
+```bash
+winget install Casey.Just   # Windows
+brew install just            # macOS / Linux
+```
+
+Die Version bestimmt `just` automatisch über `hatch version` (Fallback: `git describe --tags --always`) und übergibt sie als `--build-arg VERSION=` an Docker.
+
+| Befehl | Beschreibung |
+|--------|--------------|
+| `just version` | Aktuelle Version ausgeben |
+| `just install` | Dev-Abhängigkeiten installieren (`pip install -e ".[dev]"`) |
+| `just wheel` | Python-Wheel und Source-Distribution bauen (`dist/`) |
+| `just dev` | Lokale Entwicklung – baut Image mit aktueller Version, startet via `compose.dev.yml` |
+| `just build` | Docker-Image bauen und taggen (`ghcr.io/kaijen/title-image:<VERSION>` + `latest`) |
+| `just export` | Docker-Image als `title-image-<VERSION>.tar.gz` exportieren |
+
+---
+
 ## Paket bauen
 
 Das Paket lässt sich als Wheel (`.whl`) bauen – zur Weitergabe oder für Deployments ohne Docker.
@@ -674,11 +470,11 @@ Danach ist `title-image-service` als Kommando verfügbar. Der Service benötigt 
 **Docker-Image mit eingebetteter Version bauen:**
 
 ```bash
-just build    # liest Version automatisch aus hatch version
+just build    # liest Version automatisch, baut und taggt das Image
 just export   # exportiert Image als title-image-<VERSION>.tar.gz
 ```
 
-`just` liest die Version über `hatch version` (Fallback: `git describe --tags --always`) und übergibt sie als `--build-arg VERSION=` an Docker. Die Version landet im Python-Paket (über `SETUPTOOLS_SCM_PRETEND_VERSION_FOR_TITLE_IMAGE_SERVICE`) und als OCI-Label `org.opencontainers.image.version`.
+Siehe [Task-Runner (just)](#task-runner-just) für alle verfügbaren Befehle. Die Version landet im Python-Paket (über `SETUPTOOLS_SCM_PRETEND_VERSION_FOR_TITLE_IMAGE_SERVICE`) und als OCI-Label `org.opencontainers.image.version`.
 
 Das exportierte Archiv lässt sich auf einem anderen Rechner ohne Registry importieren:
 

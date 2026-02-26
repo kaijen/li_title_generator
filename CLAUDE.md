@@ -72,6 +72,20 @@ source = "vcs"
 [tool.hatch.version.raw-options]
 version_scheme = "post-release"
 local_scheme = "node-and-date"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/title_image_service"]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0",
+    "httpx>=0.27",
+    "build>=1.0",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["src"]
 ```
 
 Die Version wird automatisch aus Git-Tags gelesen. Auf einem Tag `v1.2.0`
@@ -100,6 +114,14 @@ Installation lokal: `pip install -e .`
 - Der Client übergibt den Key als HTTP-Header: `X-API-Key: sk-abc123`
 - Ungültiger oder fehlender Key → HTTP 401
 
+**Verhalten wenn keine Keys konfiguriert sind (leere/fehlende Datei):**
+
+| Situation | Verhalten |
+|-----------|-----------|
+| `HOST=127.0.0.1` (localhost, Default) | Offener Zugriff automatisch erlaubt – keine Variable nötig |
+| `HOST=0.0.0.0` | Jeder Request → HTTP 401 |
+| `HOST=0.0.0.0` + `ALLOW_UNAUTHENTICATED=true` | Offener Zugriff explizit erlaubt |
+
 Implementierung als FastAPI-Dependency (`Depends(verify_api_key)`), die
 in alle geschützten Endpunkte injiziert wird.
 
@@ -122,6 +144,10 @@ class ImageRequest(BaseModel):
 ```
 
 Alle Felder optional mit denselben Defaults wie im CLI-Script.
+
+`dateiname` wird per `field_validator` geprüft: nur alphanumerische Zeichen,
+Punkte, Bindestriche und Unterstriche, maximal 128 Zeichen. Leerstring (Default)
+überspringt die Prüfung.
 
 `dateiname` steuert den `Content-Disposition`-Header der HTTP-Antwort:
 - Angegeben: der übergebene Name wird verwendet (z. B. `"nis2-slide.png"`)
@@ -160,7 +186,9 @@ Alle Felder optional mit denselben Defaults wie im CLI-Script.
 - Für Docker-Healthcheck und Load-Balancer
 
 ### `GET /`
-- Redirect auf `/docs` (Swagger UI)
+- **Auth**: keine
+- **Response**: `{"service": "title-image-service", "docs": "/docs"}`
+- Kein Redirect – gibt Service-Info als JSON zurück
 
 ---
 
@@ -212,6 +240,23 @@ Volume gemountet (enthält Secrets).
 ---
 
 ## Build-Workflow
+
+Das Projekt nutzt [`just`](https://github.com/casey/just) als Task-Runner.
+Installation: `winget install Casey.Just` (Windows) · `brew install just` (macOS/Linux).
+
+Die Version liest `just` über `hatch version` (Windows) oder
+`hatch version || git describe --tags --always` (Unix).
+
+| Befehl | Beschreibung |
+|--------|--------------|
+| `just version` | Aktuelle Version ausgeben |
+| `just install` | Dev-Abhängigkeiten im aktiven venv installieren (`pip install -e ".[dev]"`) |
+| `just wheel` | Python-Wheel und Source-Distribution bauen (`dist/`) |
+| `just dev` | Lokale Entwicklung – baut Image mit aktueller Version und startet via `compose.dev.yml` |
+| `just build` | Docker-Image bauen und taggen (`ghcr.io/kaijen/title-image:<VERSION>` + `latest`) |
+| `just export` | Docker-Image als `title-image-<VERSION>.tar.gz` exportieren |
+
+**Manuell (ohne just):**
 
 ```bash
 VERSION=$(git describe --tags --always)
@@ -276,7 +321,7 @@ def run():
     import uvicorn
     uvicorn.run(
         "title_image_service.main:app",
-        host="0.0.0.0",
+        host=os.getenv("HOST", "127.0.0.1"),
         port=int(os.getenv("PORT", 8000)),
         reload=False,
     )
