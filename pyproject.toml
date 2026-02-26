@@ -28,6 +28,7 @@ source = "vcs"
 [tool.hatch.version.raw-options]
 version_scheme = "post-release"
 local_scheme = "node-and-date"
+dist_name = "title-image-service"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/title_image_service"]

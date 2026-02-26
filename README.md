@@ -428,9 +428,30 @@ Die Version bestimmt `just` automatisch über `hatch version` (Fallback: `git de
 | `just version` | Aktuelle Version ausgeben |
 | `just install` | Dev-Abhängigkeiten installieren (`pip install -e ".[dev]"`) |
 | `just wheel` | Python-Wheel und Source-Distribution bauen (`dist/`) |
-| `just dev` | Lokale Entwicklung – baut Image mit aktueller Version, startet via `compose.dev.yml` |
+| `just dev` | Lokale Entwicklung – baut Image mit aktueller Version, startet via `compose.dev.yml` auf Port 8001 |
 | `just build` | Docker-Image bauen und taggen (`ghcr.io/kaijen/title-image:<VERSION>` + `latest`) |
+| `just push` | Image bauen und zu `ghcr.io` pushen (beide Tags) |
 | `just export` | Docker-Image als `title-image-<VERSION>.tar.gz` exportieren |
+
+### Image zu ghcr.io pushen
+
+`just push` baut das Image und lädt es in die GitHub Container Registry hoch. Voraussetzung ist eine einmalige Anmeldung:
+
+```bash
+# Mit GitHub CLI (empfohlen)
+gh auth token | docker login ghcr.io -u kaijen --password-stdin
+
+# Alternativ mit Personal Access Token (Scope: write:packages)
+echo $GITHUB_TOKEN | docker login ghcr.io -u kaijen --password-stdin
+```
+
+Danach genügt:
+
+```bash
+just push
+```
+
+Das lädt `ghcr.io/kaijen/title-image:<VERSION>` und `ghcr.io/kaijen/title-image:latest` hoch.
 
 ---
 

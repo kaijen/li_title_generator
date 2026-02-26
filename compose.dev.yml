@@ -5,19 +5,27 @@
 #
 # api_keys.json.sample wird als Platzhalter gemountet; ALLOW_UNAUTHENTICATED=true
 # erlaubt Requests ohne gültigen Key.
+#
+# Läuft parallel zum produktiven Container: eigener Projektname und
+# Container-Name verhindern Namenskollisionen; Port 8001 vermeidet
+# Konflikte mit dem produktiven Port 8000.
+
+name: title-image-dev
 
 services:
   title-image:
+    container_name: title-image-dev
     build:
       context: .
       args:
         VERSION: "${VERSION:-undefined}"
     ports:
-      - "8000:8000"
+      - "8001:8000"
     volumes:
       - ./deploy/api_keys.json.sample:/config/api_keys.json:ro
     environment:
       - API_KEYS_FILE=/config/api_keys.json
       - FONT_CACHE_DIR=/fonts-cache
       - ALLOW_UNAUTHENTICATED=true
+      - HOST=0.0.0.0
     restart: "no"

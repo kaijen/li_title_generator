@@ -13,6 +13,7 @@ COPY pyproject.toml .
 COPY src/ src/
 ARG VERSION=0.0.0.dev0
 RUN SETUPTOOLS_SCM_PRETEND_VERSION_FOR_TITLE_IMAGE_SERVICE=${VERSION} \
+    SETUPTOOLS_SCM_PRETEND_VERSION=${VERSION} \
     pip install --no-cache-dir .
 
 # ── Fonts vorinstallieren ────────────────────────────────────────────────────

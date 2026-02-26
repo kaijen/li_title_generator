@@ -17,19 +17,33 @@ wheel:
     python -m build
 
 # Lokale Entwicklung – baut Image mit aktueller Version und startet den Service
+[unix]
 dev:
     VERSION={{version}} docker compose -f compose.dev.yml up --build
 
+[windows]
+dev:
+    $env:VERSION = "{{version}}"; docker compose -f compose.dev.yml up --build
+
 # Docker-Image bauen und taggen
 build:
-    docker build \
-        --build-arg VERSION={{version}} \
-        -t ghcr.io/kaijen/title-image:{{version}} \
-        -t ghcr.io/kaijen/title-image:latest \
-        .
+    docker build --build-arg VERSION={{version}} -t ghcr.io/kaijen/title-image:{{version}} -t ghcr.io/kaijen/title-image:latest .
+
+# Docker-Image zu ghcr.io pushen (setzt voraus: docker login ghcr.io)
+push: build
+    docker push ghcr.io/kaijen/title-image:{{version}}
+    docker push ghcr.io/kaijen/title-image:latest
 
 # Docker-Image als Tarball exportieren (erzeugt title-image-<VERSION>.tar.gz)
+[unix]
 export:
     docker save ghcr.io/kaijen/title-image:{{version}} | gzip > title-image-{{version}}.tar.gz
+    @echo "Exportiert: title-image-{{version}}.tar.gz"
+    @echo "Import beim Empfänger: docker load -i title-image-{{version}}.tar.gz"
+
+[windows]
+export:
+    docker save ghcr.io/kaijen/title-image:{{version}} -o title-image-{{version}}.tar; `
+    & { if (Get-Command gzip -ErrorAction SilentlyContinue) { gzip -f title-image-{{version}}.tar } else { Compress-Archive -Force -Path title-image-{{version}}.tar -DestinationPath title-image-{{version}}.tar.gz; Remove-Item title-image-{{version}}.tar } }
     @echo "Exportiert: title-image-{{version}}.tar.gz"
     @echo "Import beim Empfänger: docker load -i title-image-{{version}}.tar.gz"
