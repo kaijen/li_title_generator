@@ -2,7 +2,9 @@
 
 set windows-shell := ["powershell.exe", "-NoLogo", "-Command"]
 
-version := if os_family() == "windows" { `hatch version` } else { `hatch version 2>/dev/null || git describe --tags --always` }
+version    := if os_family() == "windows" { `hatch version` } else { `hatch version 2>/dev/null || git describe --tags --always` }
+# Docker-Tags erlauben kein '+' (PEP-440-Local-Identifier) – lokalen Teil abschneiden
+docker_tag := if os_family() == "windows" { `(hatch version) -replace '\+.*',''` } else { `hatch version 2>/dev/null | sed 's/+.*//' || git describe --tags --abbrev=0` }
 
 # Aktuelle Version ausgeben
 version:
@@ -27,23 +29,23 @@ dev:
 
 # Docker-Image bauen und taggen
 build:
-    docker build --build-arg VERSION={{version}} -t ghcr.io/kaijen/title-image:{{version}} -t ghcr.io/kaijen/title-image:latest .
+    docker build --build-arg VERSION={{version}} -t ghcr.io/kaijen/title-image:{{docker_tag}} -t ghcr.io/kaijen/title-image:latest .
 
 # Docker-Image zu ghcr.io pushen (setzt voraus: docker login ghcr.io)
 push: build
-    docker push ghcr.io/kaijen/title-image:{{version}}
+    docker push ghcr.io/kaijen/title-image:{{docker_tag}}
     docker push ghcr.io/kaijen/title-image:latest
 
 # Docker-Image als Tarball exportieren (erzeugt title-image-<VERSION>.tar.gz)
 [unix]
 export:
-    docker save ghcr.io/kaijen/title-image:{{version}} | gzip > title-image-{{version}}.tar.gz
-    @echo "Exportiert: title-image-{{version}}.tar.gz"
-    @echo "Import beim Empfänger: docker load -i title-image-{{version}}.tar.gz"
+    docker save ghcr.io/kaijen/title-image:{{docker_tag}} | gzip > title-image-{{docker_tag}}.tar.gz
+    @echo "Exportiert: title-image-{{docker_tag}}.tar.gz"
+    @echo "Import beim Empfänger: docker load -i title-image-{{docker_tag}}.tar.gz"
 
 [windows]
 export:
-    docker save ghcr.io/kaijen/title-image:{{version}} -o title-image-{{version}}.tar; `
-    & { if (Get-Command gzip -ErrorAction SilentlyContinue) { gzip -f title-image-{{version}}.tar } else { Compress-Archive -Force -Path title-image-{{version}}.tar -DestinationPath title-image-{{version}}.tar.gz; Remove-Item title-image-{{version}}.tar } }
-    @echo "Exportiert: title-image-{{version}}.tar.gz"
-    @echo "Import beim Empfänger: docker load -i title-image-{{version}}.tar.gz"
+    docker save ghcr.io/kaijen/title-image:{{docker_tag}} -o title-image-{{docker_tag}}.tar; `
+    & { if (Get-Command gzip -ErrorAction SilentlyContinue) { gzip -f title-image-{{docker_tag}}.tar } else { Compress-Archive -Force -Path title-image-{{docker_tag}}.tar -DestinationPath title-image-{{docker_tag}}.tar.gz; Remove-Item title-image-{{docker_tag}}.tar } }
+    @echo "Exportiert: title-image-{{docker_tag}}.tar.gz"
+    @echo "Import beim Empfänger: docker load -i title-image-{{docker_tag}}.tar.gz"
