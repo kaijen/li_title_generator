@@ -12,11 +12,16 @@ Erzeugt ein 16:9-PNG-Bild und gibt es als Datei zurück.
 
 **Authentifizierung:** abhängig von der Serverkonfiguration (siehe [Konfiguration](configuration.md))
 
+Sind **Keys konfiguriert** (mindestens ein Eintrag in `api_keys.json`), ist der
+`X-API-Key`-Header immer erforderlich – unabhängig von `HOST`.
+
+Sind **keine Keys konfiguriert** (`api_keys.json` fehlt oder ist leer):
+
 | Situation | Auth erforderlich |
 |-----------|------------------|
-| `HOST=127.0.0.1` (Loopback, Standard) | Nein – Loopback-Requests automatisch erlaubt |
-| `HOST=0.0.0.0` | Ja – `X-API-Key`-Header erforderlich |
+| `HOST=127.0.0.1` (Loopback, Standard) | Nein – automatisch erlaubt |
 | `HOST=0.0.0.0` + `ALLOW_UNAUTHENTICATED=true` | Nein – nur für Entwicklung |
+| `HOST=0.0.0.0` | Ja → 401 |
 
 ### Request
 

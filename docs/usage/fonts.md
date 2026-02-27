@@ -20,7 +20,12 @@ Groß-/Kleinschreibung muss dem Google-Fonts-Namen entsprechen.
 
 Folgende Fonts werden beim Docker-Build vorinstalliert (via `scripts/install_fonts.py`):
 
-<!-- TODO: Liste der vorinstallierten Fonts ergänzen -->
+| Font | Verwendung |
+|------|-----------|
+| Rubik Glitch | Standard-Font (`font`-Default) |
+| JetBrains Mono | Monospace / Code-Slides |
+| Fira Code | Monospace / Code-Slides |
+| Libertinus Mono | Monospace / Serifenbetont |
 
 ## Cache-Verzeichnis
 
@@ -33,5 +38,7 @@ ein Volume persistiert werden, um Downloads nach Container-Neustarts zu vermeide
 
 ## Fehlerverhalten
 
-Ein nicht auflösbarer Font (weder im Cache noch bei Google Fonts abrufbar) führt
-zu `HTTP 500 Internal Server Error`.
+Ist ein Font weder im Cache noch über Google Fonts abrufbar, greift der Service
+auf System-Fonts (via `fc-match`) zurück. Sind auch keine System-Fonts vorhanden,
+wird der eingebaute PIL-Standardfont verwendet – der Request schlägt **nicht** fehl,
+das Bild wird mit dem Fallback-Font gerendert.

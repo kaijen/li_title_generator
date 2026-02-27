@@ -21,11 +21,12 @@ Farben können in drei Formaten angegeben werden:
 | `blau` | `blue` |
 | `gelb` | `yellow` |
 | `orange` | `orange` |
-| `lila`, `violett` | `purple` |
+| `lila` | `purple` |
+| `violett` | `violet` |
 | `pink` | `pink` |
 | `grau` | `gray` |
 | `braun` | `brown` |
-| `türkis`, `tuerkis` | `turquoise` |
+| `türkis`, `tuerkis` | `cyan` |
 | `silber` | `silver` |
 | `gold` | `gold` |
 

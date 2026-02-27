@@ -16,12 +16,19 @@ Keine Konfigurationsdatei erforderlich.
 
 ## Authentifizierungsverhalten
 
-| Situation | Verhalten |
-|-----------|-----------|
-| `HOST=127.0.0.1` | Offener Zugriff automatisch erlaubt – kein API-Key nötig |
-| `HOST=0.0.0.0` | Jeder Request erfordert gültigen API-Key |
-| `HOST=0.0.0.0` + `ALLOW_UNAUTHENTICATED=true` | Offener Zugriff – nur für Entwicklung |
-| `API_KEYS_FILE` nicht gefunden | Service startet, jeder Request → 401 |
+Das Verhalten hängt davon ab, ob Keys konfiguriert sind und wo der Service lauscht.
+
+**Keys konfiguriert** (mindestens ein Eintrag in `api_keys.json`):
+
+`X-API-Key` muss immer einem Eintrag entsprechen – unabhängig von `HOST` und `ALLOW_UNAUTHENTICATED`.
+
+**Keine Keys konfiguriert** (`api_keys.json` fehlt, leer oder nicht lesbar):
+
+| `HOST` | `ALLOW_UNAUTHENTICATED` | Verhalten |
+|--------|-------------------------|-----------|
+| `127.0.0.1` (Default) | beliebig | Offener Zugriff automatisch erlaubt |
+| `0.0.0.0` | `true` | Offener Zugriff – nur für Entwicklung |
+| `0.0.0.0` | `false` (Default) | Jeder Request → 401 |
 
 ## API-Keys verwalten
 
