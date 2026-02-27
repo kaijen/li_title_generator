@@ -40,6 +40,14 @@ sbom:
     syft ghcr.io/kaijen/title-image:{{docker_tag}} -o cyclonedx-json=title-image-{{docker_tag}}.sbom.json
     @echo "SBOM: title-image-{{docker_tag}}.sbom.json"
 
+# Docs lokal vorschauen (http://127.0.0.1:8000)
+docs:
+    mkdocs serve
+
+# Statische Docs nach site/ bauen
+docs-build:
+    mkdocs build
+
 # Docker-Image als Tarball exportieren (erzeugt title-image-<VERSION>.tar.gz)
 [unix]
 export:

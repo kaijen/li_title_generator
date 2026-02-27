@@ -305,11 +305,31 @@ LinkedIn-Posts oder Präsentationsfolien.
 ```
 li_title_generator/
 ├── CLAUDE.md
+├── mkdocs.yml                  # MkDocs-Konfiguration (Material-Theme)
 ├── pyproject.toml
 ├── Dockerfile
 ├── compose.dev.yml             # Lokale Entwicklung (build: ., Port 8001)
 ├── justfile
 ├── .dockerignore
+├── .github/
+│   └── workflows/
+│       └── docs.yml            # GitHub Actions: Docs auf GitHub Pages deployen
+├── docs/                       # Benutzerdokumentation (MkDocs-Quellen)
+│   ├── index.md
+│   ├── getting-started.md
+│   ├── api-reference.md
+│   ├── configuration.md
+│   ├── installation/
+│   │   ├── index.md
+│   │   ├── docker-compose.md
+│   │   ├── traefik.md
+│   │   └── local-dev.md
+│   └── usage/
+│       ├── index.md
+│       ├── parameters.md
+│       ├── colors.md
+│       ├── fonts.md
+│       └── clients.md
 ├── scripts/
 │   ├── install_fonts.py        # Font-Download (läuft im Dockerfile)
 │   └── New-TitleImage.ps1      # PowerShell-Client
@@ -435,16 +455,18 @@ verwenden, um den Event-Loop nicht zu blockieren.
 ## Build-Workflow
 
 ```
-| Befehl        | Beschreibung                                                              |
-|---------------|---------------------------------------------------------------------------|
-| just version  | Aktuelle Version ausgeben                                                 |
-| just install  | Dev-Abhängigkeiten installieren (pip install -e ".[dev]")                 |
-| just wheel    | Python-Wheel und Source-Distribution bauen (dist/)                        |
-| just dev      | Lokales Dev-Image bauen und auf Port 8001 starten                         |
-| just build    | Docker-Image lokal bauen und taggen                                       |
-| just push     | Image bauen, SBOM-Attestation einbetten und zu ghcr.io pushen             |
-| just sbom     | SBOM aus gepushtem Image erzeugen (CycloneDX JSON)                        |
-| just export   | Docker-Image als title-image-<VERSION>.tar.gz exportieren                 |
+| Befehl           | Beschreibung                                                           |
+|------------------|------------------------------------------------------------------------|
+| just version     | Aktuelle Version ausgeben                                              |
+| just install     | Dev-Abhängigkeiten installieren (pip install -e ".[dev]")              |
+| just wheel       | Python-Wheel und Source-Distribution bauen (dist/)                     |
+| just dev         | Lokales Dev-Image bauen und auf Port 8001 starten                      |
+| just build       | Docker-Image lokal bauen und taggen                                    |
+| just push        | Image bauen, SBOM-Attestation einbetten und zu ghcr.io pushen          |
+| just sbom        | SBOM aus gepushtem Image erzeugen (CycloneDX JSON)                     |
+| just export      | Docker-Image als title-image-<VERSION>.tar.gz exportieren              |
+| just docs        | Docs lokal vorschauen (http://127.0.0.1:8000)                          |
+| just docs-build  | Statische Docs nach site/ bauen                                        |
 ```
 
 Image-Namen: `ghcr.io/kaijen/title-image:<VERSION>` und `latest`.
@@ -533,3 +555,66 @@ curl -X POST http://localhost:8000/generate \
   }' \
   --output nis2-slide.png
 ```
+
+---
+
+## Benutzerdokumentation (docs/)
+
+Die Benutzerdokumentation liegt unter `docs/` und wird mit
+**MkDocs + Material for MkDocs** gebaut und auf GitHub Pages veröffentlicht.
+
+### Lokale Vorschau
+
+```bash
+pip install -e ".[docs]"
+just docs        # startet mkdocs serve auf http://127.0.0.1:8000
+```
+
+### Struktur
+
+| Datei/Verzeichnis | Inhalt |
+|-------------------|--------|
+| `docs/index.md` | Übersicht und Feature-Liste |
+| `docs/getting-started.md` | Erstes Bild in vier Schritten |
+| `docs/installation/` | Docker Compose, Traefik, lokale Entwicklung |
+| `docs/usage/` | Parameter, Farben, Fonts, Client-Beispiele |
+| `docs/api-reference.md` | Endpunkte, Schemas, HTTP-Codes |
+| `docs/configuration.md` | Alle Umgebungsvariablen |
+
+### Deployment (versioniert mit mike)
+
+Docs werden **pro Release-Tag** (`v*`) deployt, nicht bei jedem Push auf `main`.
+Tool: [`mike`](https://github.com/jimporter/mike) – verwaltet versionierte Docs
+im Branch `gh-pages` und ist direkt in das Material-Theme integriert.
+
+**Ablauf bei `git tag v1.2.0 && git push --tags`:**
+
+1. GitHub Actions startet `.github/workflows/docs.yml`
+2. Tag → Version extrahieren: `v1.2.0` → `1.2.0`
+3. `mike deploy 1.2.0 latest` – publiziert nach `gh-pages/1.2.0/` und
+   setzt den Alias `latest` auf diese Version
+4. `mike set-default latest` – Haupt-URL zeigt auf `latest`
+
+**Ergebnis:**
+
+| URL | Inhalt |
+|-----|--------|
+| `https://kaijen.github.io/li_title_generator/` | Redirect auf `latest` |
+| `https://kaijen.github.io/li_title_generator/latest/` | Aktuelle Version |
+| `https://kaijen.github.io/li_title_generator/1.2.0/` | Dauerhaft zugänglich |
+
+Die Material-UI zeigt einen Versions-Switcher, mit dem Nutzer zwischen allen
+veröffentlichten Versionen wechseln können.
+
+GitHub-Pages-Einstellung im Repo: **Settings → Pages → Source: Deploy from a branch → `gh-pages` / `/ (root)`**
+
+### Abhängigkeiten
+
+```toml
+# pyproject.toml
+[project.optional-dependencies]
+docs = ["mkdocs-material>=9.5", "mike>=2.0"]
+```
+
+Nicht in `dev` – separate Gruppe, damit der Dev-Install nicht zwingend
+MkDocs mitinstalliert.

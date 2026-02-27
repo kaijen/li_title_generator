@@ -1,0 +1,35 @@
+name: Deploy Docs
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0   # Vollständige Historie – mike braucht den gh-pages-Branch
+
+      - name: MkDocs und mike installieren
+        run: pip install mkdocs-material mike
+
+      - name: Git-Identität für mike setzen
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+      - name: Version aus Tag extrahieren (v1.2.0 → 1.2.0)
+        id: version
+        run: echo "version=${GITHUB_REF_NAME#v}" >> $GITHUB_OUTPUT
+
+      - name: Docs als versionierte Version deployen
+        run: |
+          mike deploy --push --update-aliases ${{ steps.version.outputs.version }} latest
+
+      - name: "latest" als Standard-URL setzen (einmalig idempotent)
+        run: mike set-default --push latest
