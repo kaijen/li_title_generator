@@ -1,52 +1,340 @@
-# title-image-service
+# CLAUDE.md
 
-FastAPI-Webservice, der `generate.py` als HTTP-API bereitstellt.
-Clients senden JSON, erhalten ein 16:9-PNG zurück.
+Dieses Dokument ist in zwei Teile gegliedert:
 
-## Projektziel
-
-Den bestehenden Bildgenerator (`generate.py`) als installierbares Python-Paket
-und Docker-Container betreiben. Authentifizierung über API-Keys in einer lokalen
-JSON-Datei, kein Benutzer- oder Rollenkonzept.
+- **Teil 1** – Allgemeine Muster und Boilerplate für FastAPI-Docker-Projekte
+  dieser Bauart; wiederverwendbar für ähnliche Services.
+- **Teil 2** – Projektspezifische Rahmenbedingungen für diesen Service.
 
 ---
 
-## Projektstruktur
+# Teil 1: Allgemeine Muster
+
+## FastAPI-Microservice-Skeleton
+
+Minimale Struktur für einen authentifizierten FastAPI-Service als Python-Paket:
 
 ```
-title-image-service/
-├── CLAUDE.md
-├── pyproject.toml              # Paket-Metadaten und Abhängigkeiten
+my-service/
+├── pyproject.toml
 ├── Dockerfile
-├── compose.dev.yml             # Lokale Entwicklung (build: .)
+├── compose.dev.yml
+├── justfile
+├── .dockerignore
+├── scripts/           # Build-Zeit-Skripte (z.B. Assets vorinstallieren)
+├── src/
+│   └── my_service/
+│       ├── __init__.py
+│       ├── main.py    # FastAPI-App + run()-Entry-Point
+│       ├── auth.py    # API-Key-Validierung
+│       └── models.py  # Pydantic-Request/Response-Modelle
+├── tests/
+│   └── test_*.py
+└── deploy/
+    ├── .gitignore     # ignoriert .env, api_keys.json, compose.override.yml
+    ├── compose.yml    # versioniert – kein manuelles Kopieren nötig
+    ├── .env.sample
+    └── api_keys.json.sample
+```
+
+---
+
+## Python-Paket mit hatchling + hatch-vcs
+
+### pyproject.toml-Minimalvorlage
+
+```toml
+[build-system]
+requires = ["hatchling", "hatch-vcs"]
+build-backend = "hatchling.build"
+
+[project]
+name = "my-service"
+dynamic = ["version"]
+requires-python = ">=3.11"
+dependencies = [
+    "fastapi>=0.110",
+    "uvicorn[standard]>=0.29",
+]
+
+[project.scripts]
+my-service = "my_service.main:run"
+
+[tool.hatch.version]
+source = "vcs"
+
+[tool.hatch.version.raw-options]
+version_scheme = "post-release"
+local_scheme = "node-and-date"
+dist_name = "my-service"        # Pflicht: steuert SETUPTOOLS_SCM_PRETEND_VERSION_FOR_*
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/my_service"]
+
+[project.optional-dependencies]
+dev = ["pytest>=8.0", "httpx>=0.27", "build>=1.0"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["src"]
+```
+
+**Versionsschema:** Auf einem Tag `v1.2.0` → `1.2.0`. Drei Commits später →
+`1.2.0.post3+g4a2b1c.d20260225`. Erstes Tag: `git tag v0.1.0`.
+
+**Wichtig:** `dist_name` muss dem `[project].name` exakt entsprechen.
+`hatch-vcs` konstruiert daraus den Namen der Umgebungsvariable
+`SETUPTOOLS_SCM_PRETEND_VERSION_FOR_MY_SERVICE` (Unterstriche, Großbuchstaben).
+Ohne `dist_name` greift die Variable im Docker-Build nicht.
+
+---
+
+## Dockerfile-Muster
+
+Muster für einen Service mit versioniertem Python-Paket, das im Docker-Build-
+Kontext kein `.git` hat:
+
+```dockerfile
+FROM python:3.12-slim
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    <systemabhängigkeiten> && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /app
+
+COPY pyproject.toml .
+COPY src/ src/
+
+# Version an hatch-vcs übergeben – .git fehlt im Build-Kontext
+ARG VERSION=0.0.0.dev0
+RUN SETUPTOOLS_SCM_PRETEND_VERSION_FOR_MY_SERVICE=${VERSION} \
+    SETUPTOOLS_SCM_PRETEND_VERSION=${VERSION} \
+    pip install --no-cache-dir .
+
+# Secrets nie ins Image kopieren – zur Laufzeit als Volume mounten
+ENV API_KEYS_FILE=/config/api_keys.json
+
+LABEL org.opencontainers.image.version="${VERSION}"
+
+# Unprivilegierter Benutzer
+RUN useradd --no-create-home --shell /bin/false appuser \
+    && chown -R appuser:appuser /app
+USER appuser
+
+EXPOSE 8000
+HEALTHCHECK --interval=30s --timeout=5s \
+  CMD python -c "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"
+CMD ["my-service"]
+```
+
+Beide `SETUPTOOLS_SCM_PRETEND_VERSION*`-Variablen setzen: Die `_FOR_*`-Variante
+für `dist_name`-basiertes Lookup, die globale als Fallback.
+
+---
+
+## Docker-Compose-Muster
+
+### Dev/Prod-Trennung
+
+`compose.dev.yml` baut das Image aus dem Quellcode, mappt auf einen anderen Port
+und schaltet Auth ab:
+
+```yaml
+name: my-service-dev   # verhindert Namenskollision mit Prod
+
+services:
+  my-service:
+    container_name: my-service-dev
+    build:
+      context: .
+      args:
+        VERSION: "${VERSION:-undefined}"
+    ports:
+      - "8001:8000"        # anderer Port als Prod
+    environment:
+      - HOST=0.0.0.0       # Pflicht: Uvicorn bindet sonst auf 127.0.0.1 (im Container)
+      - ALLOW_UNAUTHENTICATED=true
+    restart: "no"
+```
+
+`deploy/compose.yml` (versioniert) nutzt das fertige Image aus der Registry:
+
+```yaml
+name: ${COMPOSE_PROJECT_NAME:-my-service-prod}
+
+services:
+  my-service-prod:
+    image: ${IMAGE_NAME:-ghcr.io/org/my-service}:${IMAGE_TAG:-latest}
+    container_name: ${CONTAINER_NAME:-my-service}
+    ports:
+      - "${PORT:-8000}:8000"
+    restart: unless-stopped
+```
+
+### Overlay-Pattern
+
+Instanzspezifische Erweiterungen kommen als lokales Overlay (`compose.override.yml`,
+nicht versioniert):
+
+```yaml
+# deploy/compose.override.yml
+services:
+  my-service-prod:
+    deploy:
+      resources:
+        limits:
+          memory: 512m
+```
+
+```bash
+# COMPOSE_FILE=compose.yml:compose.override.yml in .env setzen
+docker compose up -d
+```
+
+### deploy/.gitignore
+
+Nur instanzspezifische Dateien ignorieren, versionierbare Templates einchecken:
+
+```
+.env
+api_keys.json
+compose.override.yml
+```
+
+`compose.yml` selbst ist versioniert – kein manuelles Kopieren aus `.sample` nötig.
+
+---
+
+## just Task-Runner
+
+Cross-Platform-Kompatibilität: `set windows-shell` für PowerShell, plattform-
+spezifische Rezepte via `[unix]`/`[windows]`.
+
+```just
+set windows-shell := ["powershell.exe", "-NoLogo", "-Command"]
+
+version    := if os_family() == "windows" { `hatch version` } else { `hatch version 2>/dev/null || git describe --tags --always` }
+# Docker-Tags erlauben kein '+' (PEP-440 Local) – lokalen Teil abschneiden
+docker_tag := if os_family() == "windows" { `(hatch version) -replace '\+.*',''` } else { `hatch version 2>/dev/null | sed 's/+.*//'` }
+
+install:
+    pip install -e ".[dev]"
+
+wheel:
+    python -m build
+
+[unix]
+dev:
+    VERSION={{version}} docker compose -f compose.dev.yml up --build
+
+[windows]
+dev:
+    $env:VERSION = "{{version}}"; docker compose -f compose.dev.yml up --build
+
+build:
+    docker build --build-arg VERSION={{version}} -t org/my-service:{{docker_tag}} -t org/my-service:latest .
+
+push:
+    docker buildx build --sbom=true --provenance=mode=max --build-arg VERSION={{version}} -t org/my-service:{{docker_tag}} -t org/my-service:latest --push .
+
+sbom:
+    syft org/my-service:{{docker_tag}} -o cyclonedx-json=my-service-{{docker_tag}}.sbom.json
+```
+
+---
+
+## API-Key-Authentifizierung
+
+Keys in einer lokalen JSON-Datei; Pfad via Umgebungsvariable `API_KEYS_FILE`.
+Die Datei wird **bei jedem Request** neu gelesen – kein Neustart bei Key-Änderungen.
+
+```json
+{ "keys": ["sk-abc123", "sk-xyz789"] }
+```
+
+Client: `X-API-Key: sk-abc123` als HTTP-Header. Ungültig/fehlend → 401.
+
+Offener Zugriff ohne Keys:
+
+| Situation | Verhalten |
+|-----------|-----------|
+| `HOST=127.0.0.1` (Loopback) | Automatisch erlaubt – keine Variable nötig |
+| `HOST=0.0.0.0` | Jeder Request → 401 |
+| `HOST=0.0.0.0` + `ALLOW_UNAUTHENTICATED=true` | Offen – nur für Entwicklung |
+
+FastAPI-Implementierung als `Depends(verify_api_key)` in geschützten Endpunkten.
+
+---
+
+## SBOM via Docker BuildKit
+
+`docker buildx build --sbom=true --provenance=mode=max --push` bettet eine SBOM
+als OCI-Attestation direkt ins Image ein. Kein separates Tool nötig; die SBOM
+lebt neben dem Image in der Registry.
+
+Einschränkung: `--sbom=true` funktioniert nur mit `--push`. Lokale Builds
+(`--load`) unterstützen keine Attestationen.
+
+SBOM abrufen:
+```bash
+docker buildx imagetools inspect ghcr.io/org/my-service:latest \
+  --format '{{ json .SBOM }}'
+```
+
+Für Audits/Release-Anhänge: `syft` erzeugt eine Standalone-Datei (CycloneDX JSON):
+```bash
+syft ghcr.io/org/my-service:<tag> -o cyclonedx-json=my-service-<tag>.sbom.json
+```
+
+---
+
+---
+
+# Teil 2: Projektspezifisch
+
+## Projektziel
+
+FastAPI-Webservice, der einen Bildgenerator (`generate.py`) als HTTP-API
+bereitstellt. Clients senden JSON, erhalten ein 16:9-PNG zurück – z.B. für
+LinkedIn-Posts oder Präsentationsfolien.
+
+---
+
+## Projektstruktur (aktuell)
+
+```
+li_title_generator/
+├── CLAUDE.md
+├── pyproject.toml
+├── Dockerfile
+├── compose.dev.yml             # Lokale Entwicklung (build: ., Port 8001)
+├── justfile
 ├── .dockerignore
 ├── scripts/
-│   └── install_fonts.py        # Font-Download (wird im Dockerfile ausgeführt)
+│   ├── install_fonts.py        # Font-Download (läuft im Dockerfile)
+│   └── New-TitleImage.ps1      # PowerShell-Client
 ├── src/
 │   └── title_image_service/
 │       ├── __init__.py
-│       ├── main.py             # FastAPI-App, Endpunkte
-│       ├── auth.py             # API-Key-Validierung
-│       ├── generator.py        # Bildgenerierung (aus generate.py übernommen)
-│       └── models.py           # Pydantic-Modelle für Request/Response
+│       ├── main.py
+│       ├── auth.py
+│       ├── generator.py
+│       └── models.py
 ├── tests/
 │   ├── test_auth.py
 │   └── test_generate.py
-└── deploy/                     # Betriebskonfiguration (nicht vollständig versioniert)
-    ├── .gitignore              # ignoriert compose.yml, .env, api_keys.json
-    ├── compose.yml.sample      # Template → cp compose.yml.sample compose.yml
-    ├── compose.traefik.yml     # Traefik-Overlay (versioniert, nur .env-Variablen)
-    ├── .env.sample             # Template → cp .env.sample .env
-    └── api_keys.json.sample    # Template → cp api_keys.json.sample api_keys.json
+└── deploy/
+    ├── .gitignore              # ignoriert .env, api_keys.json, compose.override.yml
+    ├── compose.yml             # versioniert – direkt nutzbar, kein cp nötig
+    ├── compose.traefik.yml     # Traefik-Overlay (versioniert)
+    ├── traefik-mtls-options.yml.sample
+    ├── .env.sample
+    └── api_keys.json.sample
 ```
 
 ---
 
 ## Paket-Setup (pyproject.toml)
-
-Standard-PEP-517-Paket mit `hatchling` und `hatch-vcs`.
-Abhängigkeiten: `fastapi`, `uvicorn[standard]`, `pillow`.
-Entry-Point: `title-image-service` startet `uvicorn`.
 
 ```toml
 [build-system]
@@ -72,214 +360,107 @@ source = "vcs"
 [tool.hatch.version.raw-options]
 version_scheme = "post-release"
 local_scheme = "node-and-date"
+dist_name = "title-image-service"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/title_image_service"]
 
 [project.optional-dependencies]
-dev = [
-    "pytest>=8.0",
-    "httpx>=0.27",
-    "build>=1.0",
-]
+dev = ["pytest>=8.0", "httpx>=0.27", "build>=1.0"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 pythonpath = ["src"]
 ```
 
-Die Version wird automatisch aus Git-Tags gelesen. Auf einem Tag `v1.2.0`
-ergibt sich `1.2.0`, drei Commits danach `1.2.0.post3+g4a2b1c.d20260225`.
-Erstes Tag setzen mit: `git tag v0.1.0`
-
-Installation lokal: `pip install -e .`
-
----
-
-## API-Key-Authentifizierung (auth.py)
-
-- Keys werden aus `api_keys.json` gelesen (Pfad via Umgebungsvariable
-  `API_KEYS_FILE`, Default: `./api_keys.json`)
-- Format der Datei:
-  ```json
-  {
-    "keys": [
-      "sk-abc123",
-      "sk-xyz789"
-    ]
-  }
-  ```
-- Die Datei wird bei **jedem Request** neu gelesen – so lassen sich Keys
-  hinzufügen oder entfernen ohne Neustart.
-- Der Client übergibt den Key als HTTP-Header: `X-API-Key: sk-abc123`
-- Ungültiger oder fehlender Key → HTTP 401
-
-**Verhalten wenn keine Keys konfiguriert sind (leere/fehlende Datei):**
-
-| Situation | Verhalten |
-|-----------|-----------|
-| `HOST=127.0.0.1` (localhost, Default) | Offener Zugriff automatisch erlaubt – keine Variable nötig |
-| `HOST=0.0.0.0` | Jeder Request → HTTP 401 |
-| `HOST=0.0.0.0` + `ALLOW_UNAUTHENTICATED=true` | Offener Zugriff explizit erlaubt |
-
-Implementierung als FastAPI-Dependency (`Depends(verify_api_key)`), die
-in alle geschützten Endpunkte injiziert wird.
-
----
-
-## Datenmodelle (models.py)
-
-Request-Modell spiegelt die JSON-Eingabe von `generate.py` exakt wider:
-
-```python
-class ImageRequest(BaseModel):
-    titel:       str  = ""
-    text:        str  = ""
-    vordergrund: str  = "white"
-    hintergrund: str  = "black"
-    breite:      int  = 1024
-    font:        str  = "Rubik Glitch"
-    titelzeilen: int  = 1
-    dateiname:   str  = ""  # Leer → linkedin_title_<YYYY-MM-DD-HH-mm>.png
-```
-
-Alle Felder optional mit denselben Defaults wie im CLI-Script.
-
-`dateiname` wird per `field_validator` geprüft: nur alphanumerische Zeichen,
-Punkte, Bindestriche und Unterstriche, maximal 128 Zeichen. Leerstring (Default)
-überspringt die Prüfung.
-
-`dateiname` steuert den `Content-Disposition`-Header der HTTP-Antwort:
-- Angegeben: der übergebene Name wird verwendet (z. B. `"nis2-slide.png"`)
-- Leer oder weggelassen: automatisch `linkedin_title_<YYYY-MM-DD-HH-mm>.png`
-
----
-
-## Bildgenerator (generator.py)
-
-`generate.py` wird **nicht kopiert**, sondern sein Kern in `generator.py`
-überführt:
-
-- Alle Funktionen (`resolve_font`, `normalize_color`, `wrap_text`,
-  `generate_image`, …) bleiben inhaltlich unverändert
-- `generate_image()` erhält einen zusätzlichen Parameter `output_path=None`:
-  - Wenn `None`: gibt die Bilddaten als `bytes` (PNG) zurück statt zu speichern
-  - Wenn Pfad angegeben: verhält sich wie bisher (für CLI-Kompatibilität)
-- Font-Cache-Verzeichnis via Umgebungsvariable `FONT_CACHE_DIR`,
-  Default: `~/.cache/title-image-fonts`
-
 ---
 
 ## HTTP-Endpunkte (main.py)
 
 ### `POST /generate`
-- **Auth**: `X-API-Key` required
+- **Auth**: `X-API-Key` erforderlich
 - **Body**: `ImageRequest` als JSON
-- **Response**: PNG-Bilddaten (`Content-Type: image/png`)
+- **Response**: PNG (`Content-Type: image/png`)
 - **Header**: `Content-Disposition: attachment; filename="<dateiname>"`
-  – Dateiname aus `dateiname`-Feld oder automatisch `linkedin_title_<YYYY-MM-DD-HH-mm>.png`
-- Fehler bei ungültigen Farben oder Parametern → HTTP 422
+- Fehler bei ungültigen Parametern → HTTP 422
 
 ### `GET /health`
 - **Auth**: keine
 - **Response**: `{"status": "ok"}`
-- Für Docker-Healthcheck und Load-Balancer
 
 ### `GET /`
 - **Auth**: keine
 - **Response**: `{"service": "title-image-service", "docs": "/docs"}`
-- Kein Redirect – gibt Service-Info als JSON zurück
 
 ---
 
-## Dockerfile
+## Datenmodell (models.py)
 
-Das Dockerfile akzeptiert ein `VERSION`-Build-Argument, das die Python-Paketversion
-und das OCI-Image-Label setzt. Ohne Angabe greift der Default `0.0.0.dev0`.
-
-Da im Docker-Build-Kontext kein `.git` vorhanden ist, wird die Version über
-`SETUPTOOLS_SCM_PRETEND_VERSION_FOR_TITLE_IMAGE_SERVICE` an `hatch-vcs` übergeben.
-
-```dockerfile
-FROM python:3.12-slim
-
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    fontconfig curl && rm -rf /var/lib/apt/lists/*
-
-WORKDIR /app
-
-COPY pyproject.toml .
-COPY src/ src/
-ARG VERSION=0.0.0.dev0
-RUN SETUPTOOLS_SCM_PRETEND_VERSION_FOR_TITLE_IMAGE_SERVICE=${VERSION} \
-    pip install --no-cache-dir .
-
-COPY scripts/install_fonts.py /tmp/install_fonts.py
-RUN mkdir -p /fonts-cache \
-    && FONT_CACHE_DIR=/fonts-cache python3 /tmp/install_fonts.py \
-    && rm /tmp/install_fonts.py
-
-ENV FONT_CACHE_DIR=/fonts-cache
-ENV API_KEYS_FILE=/config/api_keys.json
-
-LABEL org.opencontainers.image.version="${VERSION}"
-
-RUN useradd --no-create-home --shell /bin/false appuser \
-    && chown -R appuser:appuser /app /fonts-cache
-USER appuser
-
-EXPOSE 8000
-HEALTHCHECK --interval=30s --timeout=5s \
-  CMD python -c "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"
-CMD ["title-image-service"]
+```python
+class ImageRequest(BaseModel):
+    titel:       str = ""
+    text:        str = ""
+    vordergrund: str = "white"
+    hintergrund: str = "black"
+    breite:      int = 1024
+    font:        str = "Rubik Glitch"
+    titelzeilen: int = 1
+    dateiname:   str = ""   # Leer → linkedin_title_<YYYY-MM-DD-HH-mm>.png
 ```
 
-Wichtig: `api_keys.json` **nicht** in das Image kopieren – sie wird als
-Volume gemountet (enthält Secrets).
+`dateiname`: `field_validator` erlaubt nur alphanumerische Zeichen, Punkte,
+Bindestriche, Unterstriche, max. 128 Zeichen.
+
+---
+
+## Bildgenerator (generator.py)
+
+`generate.py` wird nicht kopiert, sondern als `generator.py` ins Paket überführt:
+
+- Funktionen `resolve_font`, `normalize_color`, `wrap_text`, `generate_image`
+  bleiben inhaltlich unverändert
+- `generate_image(output_path=None)`: ohne Pfad → `bytes` (PNG im RAM),
+  mit Pfad → Datei auf Disk (CLI-Kompatibilität)
+- Font-Cache: Umgebungsvariable `FONT_CACHE_DIR`,
+  Default `~/.cache/title-image-fonts`
+- Deutsch-Farbnamen (`schwarz`, `weiß`/`weiss`, `rot`, …) werden in
+  Pillow-kompatible Namen übersetzt
+
+Pillow-Operationen laufen im RAM (`io.BytesIO`), kein temporäres File.
+`generate_image()` ist CPU-gebunden → `asyncio.to_thread()` im FastAPI-Handler
+verwenden, um den Event-Loop nicht zu blockieren.
 
 ---
 
 ## Build-Workflow
 
-Das Projekt nutzt [`just`](https://github.com/casey/just) als Task-Runner.
-Installation: `winget install Casey.Just` (Windows) · `brew install just` (macOS/Linux).
-
-Die Version liest `just` über `hatch version` (Windows) oder
-`hatch version || git describe --tags --always` (Unix).
-
-| Befehl | Beschreibung |
-|--------|--------------|
-| `just version` | Aktuelle Version ausgeben |
-| `just install` | Dev-Abhängigkeiten im aktiven venv installieren (`pip install -e ".[dev]"`) |
-| `just wheel` | Python-Wheel und Source-Distribution bauen (`dist/`) |
-| `just dev` | Lokale Entwicklung – baut Image mit aktueller Version und startet via `compose.dev.yml` |
-| `just build` | Docker-Image bauen und taggen (`ghcr.io/kaijen/title-image:<VERSION>` + `latest`) |
-| `just export` | Docker-Image als `title-image-<VERSION>.tar.gz` exportieren |
-
-**Manuell (ohne just):**
-
-```bash
-VERSION=$(git describe --tags --always)
-
-docker build \
-  --build-arg VERSION=${VERSION} \
-  -t ghcr.io/kaijen/title-image:${VERSION} \
-  -t ghcr.io/kaijen/title-image:latest \
-  .
 ```
+| Befehl        | Beschreibung                                                              |
+|---------------|---------------------------------------------------------------------------|
+| just version  | Aktuelle Version ausgeben                                                 |
+| just install  | Dev-Abhängigkeiten installieren (pip install -e ".[dev]")                 |
+| just wheel    | Python-Wheel und Source-Distribution bauen (dist/)                        |
+| just dev      | Lokales Dev-Image bauen und auf Port 8001 starten                         |
+| just build    | Docker-Image lokal bauen und taggen                                       |
+| just push     | Image bauen, SBOM-Attestation einbetten und zu ghcr.io pushen             |
+| just sbom     | SBOM aus gepushtem Image erzeugen (CycloneDX JSON)                        |
+| just export   | Docker-Image als title-image-<VERSION>.tar.gz exportieren                 |
+```
+
+Image-Namen: `ghcr.io/kaijen/title-image:<VERSION>` und `latest`.
+Docker-Tag: PEP-440-Local-Identifier (`+`) wird abgeschnitten, da Docker-Tags
+kein `+` erlauben.
 
 ---
 
 ## Betrieb (deploy/)
 
-`deploy/` enthält versionierte Templates und nicht versionierte Betriebsdateien.
-`deploy/.gitignore` ignoriert `compose.yml`, `.env` und `api_keys.json`.
+`deploy/compose.yml` ist versioniert – kein manuelles Kopieren aus `.sample`.
 
 ### Einmalig einrichten
 
 ```bash
 cd deploy
-cp compose.yml.sample compose.yml
 cp .env.sample .env
 cp api_keys.json.sample api_keys.json
 # IMAGE_TAG, TRAEFIK_HOST etc. in .env anpassen
@@ -291,26 +472,22 @@ cp api_keys.json.sample api_keys.json
 ```bash
 cd deploy
 docker compose up -d
-
-# Mit Traefik-Overlay: COMPOSE_FILE=compose.yml:compose.traefik.yml in .env setzen
-docker compose up -d
 ```
 
-`compose.traefik.yml` ist versioniert, weil es ausschließlich Variablen aus `.env`
-nutzt und keine instanzspezifischen Hardcodes enthält. Weitere Anpassungen
-kommen als zusätzliches Overlay (nicht versioniert).
+### Mit Traefik-Overlay
 
----
+`COMPOSE_FILE=compose.yml:compose.traefik.yml` in `.env` setzen.
+Variablen: `TRAEFIK_HOST`, `TRAEFIK_NETWORK`, `TRAEFIK_ENTRYPOINT`,
+`TRAEFIK_CERTRESOLVER`.
 
-## Lokale Entwicklung
+### Instanzspezifische Anpassungen
+
+Über `compose.override.yml` (nicht versioniert, in `deploy/.gitignore`):
 
 ```bash
-docker compose -f compose.dev.yml up --build
+# COMPOSE_FILE=compose.yml:compose.override.yml in .env
+docker compose up -d
 ```
-
-`compose.dev.yml` baut das Image direkt aus dem Quellcode (`build: .`),
-setzt `ALLOW_UNAUTHENTICATED=true` und mountet `deploy/api_keys.json.sample`
-als Platzhalter.
 
 ---
 
@@ -332,18 +509,16 @@ def run():
 ## Fehlerbehandlung
 
 - Ungültige Farbe (Pillow-Exception) → HTTP 422 mit sprechender Meldung
-- Font nicht auflösbar (alle Fallbacks fehlgeschlagen) → HTTP 500
-- `api_keys.json` nicht gefunden beim Start → Server startet trotzdem,
-  jeder Request → 401 (kein stiller Fehler)
-- Jede Exception in `/generate` wird geloggt (inkl. Stacktrace) bevor
-  HTTP 500 zurückgegeben wird
+- Font nicht auflösbar → HTTP 500
+- `api_keys.json` nicht gefunden → Server startet trotzdem, jeder Request → 401
+- Jede Exception in `/generate` → geloggt (inkl. Stacktrace), dann HTTP 500
+- Logging via Python `logging`, Level via `LOG_LEVEL` (Default: `INFO`)
 
 ---
 
 ## Beispiel-Request
 
 ```bash
-# Mit explizitem Dateinamen
 curl -X POST http://localhost:8000/generate \
   -H "X-API-Key: sk-abc123" \
   -H "Content-Type: application/json" \
@@ -357,23 +532,4 @@ curl -X POST http://localhost:8000/generate \
     "dateiname": "nis2-slide.png"
   }' \
   --output nis2-slide.png
-
-# Ohne Dateinamen → linkedin_title_<YYYY-MM-DD-HH-mm>.png im Content-Disposition-Header
-curl -X POST http://localhost:8000/generate \
-  -H "X-API-Key: sk-abc123" \
-  -H "Content-Type: application/json" \
-  -d '{"titel": "NIS2 Compliance", "breite": 1920}' \
-  -OJ
 ```
-
----
-
-## Hinweise für die Implementierung
-
-- `generate_image()` läuft synchron und ist CPU-gebunden. Bei vielen
-  gleichzeitigen Requests `asyncio.to_thread()` verwenden, damit der
-  Event-Loop nicht blockiert.
-- Die Pillow-Operationen erzeugen das Bild im RAM (`io.BytesIO`), kein
-  temporäres File auf Disk nötig.
-- Logging mit Python `logging` (nicht `print`), Level via Umgebungsvariable
-  `LOG_LEVEL` (Default: `INFO`).
