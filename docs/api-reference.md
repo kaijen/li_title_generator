@@ -10,7 +10,13 @@ Interaktive Swagger-UI: `/docs`
 
 Erzeugt ein 16:9-PNG-Bild und gibt es als Datei zurück.
 
-**Authentifizierung:** `X-API-Key`-Header erforderlich
+**Authentifizierung:** abhängig von der Serverkonfiguration (siehe [Konfiguration](configuration.md))
+
+| Situation | Auth erforderlich |
+|-----------|------------------|
+| `HOST=127.0.0.1` (Loopback, Standard) | Nein – Loopback-Requests automatisch erlaubt |
+| `HOST=0.0.0.0` | Ja – `X-API-Key`-Header erforderlich |
+| `HOST=0.0.0.0` + `ALLOW_UNAUTHENTICATED=true` | Nein – nur für Entwicklung |
 
 ### Request
 
@@ -18,8 +24,10 @@ Erzeugt ein 16:9-PNG-Bild und gibt es als Datei zurück.
 
 | Header | Pflicht | Wert |
 |--------|---------|------|
-| `X-API-Key` | Ja | API-Key aus `api_keys.json` |
+| `X-API-Key` | Nein / Ja* | API-Key aus `api_keys.json` |
 | `Content-Type` | Ja | `application/json` |
+
+*Pflicht wenn `HOST=0.0.0.0` und `ALLOW_UNAUTHENTICATED` nicht gesetzt.
 
 **Body:** JSON-Objekt – alle Felder optional. Siehe [Parameter](usage/parameters.md).
 
