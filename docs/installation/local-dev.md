@@ -43,6 +43,7 @@ pytest -v       # mit ausführlicher Ausgabe
 
 | Befehl | Beschreibung |
 |--------|--------------|
+| `just checkenv` | Build-Umgebung prüfen (Python, git, hatch, docker) |
 | `just version` | Aktuelle Version ausgeben |
 | `just install` | Dev-Abhängigkeiten installieren |
 | `just dev` | Dev-Image bauen und starten (Port 8001, kein Auth) |

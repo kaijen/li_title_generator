@@ -10,6 +10,89 @@ docker_tag := if os_family() == "windows" { `(hatch version) -replace '\+.*',''`
 version:
     @echo {{version}}
 
+# Build-Umgebung auf Vollständigkeit prüfen (Python ≥ 3.11, git, hatch, docker, docker buildx)
+[unix]
+checkenv:
+    #!/usr/bin/env bash
+    set +e
+    errors=0
+    ok()   { printf "  \033[32m✓\033[0m  %-24s %s\n"  "$1" "$2"; }
+    fail() { printf "  \033[31m✗\033[0m  %-24s %s\n"  "$1" "$2"; errors=$((errors+1)); }
+    info() { printf "  \033[33m–\033[0m  %-24s %s\n"  "$1" "$2"; }
+
+    echo ""
+    echo "── Build-Umgebung prüfen ─────────────────────────────────────────────"
+    echo ""
+    echo "  Pflichtkomponenten:"
+
+    py=$(command -v python3 2>/dev/null || command -v python 2>/dev/null)
+    if [ -n "$py" ]; then
+        ver=$("$py" --version 2>&1)
+        maj=$("$py" -c "import sys; print(sys.version_info.major)")
+        min=$("$py" -c "import sys; print(sys.version_info.minor)")
+        if [ "$maj" -ge 3 ] && [ "$min" -ge 11 ]; then
+            ok "Python ≥ 3.11" "($ver)"
+        else
+            fail "Python ≥ 3.11 erforderlich" "gefunden: $ver"
+            info "" "→ apt/dnf install python3.11  |  https://www.python.org/downloads/"
+        fi
+    else
+        fail "Python" "nicht gefunden"
+        info "" "→ apt install python3  |  dnf install python3  |  https://www.python.org"
+    fi
+
+    if command -v git &>/dev/null; then
+        ok "git" "($(git --version))"
+    else
+        fail "git" "nicht gefunden"
+        info "" "→ apt install git  |  dnf install git  |  https://git-scm.com"
+    fi
+
+    if command -v hatch &>/dev/null; then
+        ok "hatch" "($(hatch --version 2>&1 | head -1))"
+    else
+        fail "hatch" "nicht gefunden"
+        info "" "→ pip install hatch  |  pipx install hatch"
+    fi
+
+    if command -v docker &>/dev/null; then
+        ok "docker" "($(docker --version))"
+        if docker buildx version &>/dev/null 2>&1; then
+            ok "docker buildx" "($(docker buildx version 2>&1 | head -1))"
+        else
+            fail "docker buildx" "nicht gefunden"
+            info "" "→ Ab Docker 23 enthalten  |  https://github.com/docker/buildx#installing"
+        fi
+    else
+        fail "docker" "nicht gefunden"
+        info "" "→ https://docs.docker.com/engine/install/"
+        fail "docker buildx" "nicht prüfbar (docker fehlt)"
+    fi
+
+    echo ""
+    echo "  Optionale Komponenten:"
+
+    if command -v syft &>/dev/null; then
+        ok "syft (SBOM)" "($(syft --version 2>&1 | head -1))"
+    else
+        info "syft (SBOM)" "nicht installiert"
+        info "" "→ curl -sSfL https://raw.githubusercontent.com/anchore/syft/main/install.sh | sh -s -- -b /usr/local/bin"
+    fi
+
+    echo ""
+    echo "─────────────────────────────────────────────────────────────────────"
+    if [ "$errors" -eq 0 ]; then
+        printf "\033[32m  Alle Pflichtkomponenten vorhanden. ✓\033[0m\n"
+    else
+        printf "\033[31m  %d Pflichtkomponente(n) fehlen – Hinweise beachten. ✗\033[0m\n" "$errors"
+        exit 1
+    fi
+    echo ""
+
+[windows]
+checkenv:
+    powershell -NonInteractive -ExecutionPolicy Bypass -File scripts\checkenv.ps1
+
 # Entwicklungsabhängigkeiten im aktiven venv installieren
 install:
     pip install -e ".[dev]"
