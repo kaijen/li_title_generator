@@ -10,13 +10,14 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: write
+      pages: write
     steps:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0   # Vollständige Historie – mike braucht den gh-pages-Branch
 
       - name: MkDocs und mike installieren
-        run: pip install mkdocs-material mike
+        run: pip install "mkdocs-material>=9.5" "mkdocs>=1.5,<2.0" mike
 
       - name: Git-Identität für mike setzen
         run: |
@@ -33,3 +34,13 @@ jobs:
 
       - name: '"latest" als Standard-URL setzen (einmalig idempotent)'
         run: mike set-default --push latest
+
+      - name: GitHub Pages aktivieren (einmalig, idempotent)
+        continue-on-error: true   # 409 Conflict wenn bereits aktiv – kein Fehler
+        run: |
+          gh api repos/${{ github.repository }}/pages \
+            --method POST \
+            -f 'source[branch]=gh-pages' \
+            -f 'source[path]=/'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
