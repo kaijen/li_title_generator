@@ -1,0 +1,56 @@
+site_name: Title Image Service
+site_url: https://kaijen.github.io/li_title_generator/
+repo_url: https://github.com/kaijen/li_title_generator
+repo_name: kaijen/li_title_generator
+
+theme:
+  name: material
+  language: de
+  palette:
+    scheme: slate
+    primary: black
+    accent: deep orange
+  features:
+    - navigation.tabs
+    - navigation.sections
+    - navigation.top
+    - content.code.copy
+    - search.suggest
+    - search.highlight
+
+nav:
+  - Übersicht: index.md
+  - Schnellstart: getting-started.md
+  - Installation:
+      - Übersicht: installation/index.md
+      - Docker Compose: installation/docker-compose.md
+      - Traefik: installation/traefik.md
+      - Lokale Entwicklung: installation/local-dev.md
+  - Nutzung:
+      - Übersicht: usage/index.md
+      - Parameter: usage/parameters.md
+      - Farben: usage/colors.md
+      - Fonts: usage/fonts.md
+      - Client-Beispiele: usage/clients.md
+  - API-Referenz: api-reference.md
+  - Konfiguration: configuration.md
+
+extra:
+  version:
+    provider: mike
+
+plugins:
+  - search
+  - mike
+
+markdown_extensions:
+  - admonition
+  - pymdownx.details
+  - pymdownx.superfences
+  - pymdownx.highlight:
+      anchor_linenums: true
+  - pymdownx.inlinehilite
+  - pymdownx.tabbed:
+      alternate_style: true
+  - tables
+  - attr_list
