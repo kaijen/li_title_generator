@@ -31,5 +31,5 @@ jobs:
         run: |
           mike deploy --push --update-aliases ${{ steps.version.outputs.version }} latest
 
-      - name: "latest" als Standard-URL setzen (einmalig idempotent)
+      - name: '"latest" als Standard-URL setzen (einmalig idempotent)'
         run: mike set-default --push latest
